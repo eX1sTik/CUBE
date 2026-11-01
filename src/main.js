@@ -346,26 +346,71 @@ function buildCubeGeometry(excludedFaces = new Set()) {
         const n = face.normal;
         let corners;
         if (Math.abs(n.z) === 1) {
-            corners = [
-                new THREE.Vector3(-half, -half, n.z * half),
-                new THREE.Vector3( half, -half, n.z * half),
-                new THREE.Vector3( half,  half, n.z * half),
-                new THREE.Vector3(-half,  half, n.z * half),
-            ];
+            // Front (z+) or Back (z-)
+            if (n.z === 1) {
+                // Front face: CCW from outside (positive Z looking toward origin)
+                // x: left(-1) to right(1), y: bottom(-1) to top(1)
+                corners = [
+                    new THREE.Vector3(-half, -half,  half), // bottom-left
+                    new THREE.Vector3( half, -half,  half), // bottom-right
+                    new THREE.Vector3( half,  half,  half), // top-right
+                    new THREE.Vector3(-half,  half,  half), // top-left
+                ];
+            } else {
+                // Back face (z-): CCW from outside (negative Z looking toward origin)
+                // From back: x increases to LEFT, y increases UP
+                // Right-bottom (1,-1,-1), Left-bottom (-1,-1,-1), Left-top (-1,1,-1), Right-top (1,1,-1)
+                corners = [
+                    new THREE.Vector3( half, -half, -half), // right-bottom
+                    new THREE.Vector3(-half, -half, -half), // left-bottom
+                    new THREE.Vector3(-half,  half, -half), // left-top
+                    new THREE.Vector3( half,  half, -half), // right-top
+                ];
+            }
         } else if (Math.abs(n.x) === 1) {
-            corners = [
-                new THREE.Vector3(n.x * half, -half, -half),
-                new THREE.Vector3(n.x * half, -half,  half),
-                new THREE.Vector3(n.x * half,  half,  half),
-                new THREE.Vector3(n.x * half,  half, -half),
-            ];
+            // Right (x+) or Left (x-)
+            if (n.x === 1) {
+                // Right face: CCW from outside (positive X looking toward origin)
+                // z: right(1) to left(-1), y: bottom(-1) to top(1)
+                corners = [
+                    new THREE.Vector3( half, -half,  half), // bottom-right (z+)
+                    new THREE.Vector3( half, -half, -half), // bottom-left (z-)
+                    new THREE.Vector3( half,  half, -half), // top-left (z-)
+                    new THREE.Vector3( half,  half,  half), // top-right (z+)
+                ];
+            } else {
+                // Left face (x-): CCW from outside (negative X looking toward origin)
+                // z: left(-1) to right(1), y: bottom(-1) to top(1)
+                corners = [
+                    new THREE.Vector3(-half, -half, -half), // bottom-left (z-)
+                    new THREE.Vector3(-half, -half,  half), // bottom-right (z+)
+                    new THREE.Vector3(-half,  half,  half), // top-right (z+)
+                    new THREE.Vector3(-half,  half, -half), // top-left (z-)
+                ];
+            }
         } else {
-            corners = [
-                new THREE.Vector3(-half, n.y * half, -half),
-                new THREE.Vector3(-half, n.y * half,  half),
-                new THREE.Vector3( half, n.y * half,  half),
-                new THREE.Vector3( half, n.y * half, -half),
-            ];
+            // Top (y+) or Bottom (y-)
+            if (n.y === 1) {
+                // Top face: CCW from outside (positive Y looking down)
+                // x: left(-1) to right(1), z: front(1) to back(-1) [from above, +z is away]
+                // Left-front (-1,1,1), Right-front (1,1,1), Right-back (1,1,-1), Left-back (-1,1,-1)
+                corners = [
+                    new THREE.Vector3(-half,  half,  half), // left-front
+                    new THREE.Vector3( half,  half,  half), // right-front
+                    new THREE.Vector3( half,  half, -half), // right-back
+                    new THREE.Vector3(-half,  half, -half), // left-back
+                ];
+            } else {
+                // Bottom face (y-): CCW from outside (negative Y looking up)
+                // x: left(-1) to right(1), z: back(-1) to front(1) [from below, +z is toward]
+                // Left-back (-1,-1,-1), Left-front (-1,-1,1), Right-front (1,-1,1), Right-back (1,-1,-1)
+                corners = [
+                    new THREE.Vector3(-half, -half, -half), // left-back
+                    new THREE.Vector3(-half, -half,  half), // left-front
+                    new THREE.Vector3( half, -half,  half), // right-front
+                    new THREE.Vector3( half, -half, -half), // right-back
+                ];
+            }
         }
 
         corners.forEach((corner, i) => {
