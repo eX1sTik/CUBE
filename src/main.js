@@ -45,14 +45,15 @@ const faceData = [
 ];
 
 const faceGeometry = new THREE.PlaneGeometry(faceSize, faceSize);
-const faceMaterial = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    roughness: 0.35,
-    metalness: 0.0,
-    side: THREE.DoubleSide, // Visible from both sides
-});
 
 faceData.forEach((data, index) => {
+    // Each face gets its own material instance
+    const faceMaterial = new THREE.MeshStandardMaterial({
+        color: 0x000000,
+        roughness: 0.35,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+    });
     const face = new THREE.Mesh(faceGeometry, faceMaterial);
     face.position.set(...data.pos);
     face.rotation.set(...data.rot);
