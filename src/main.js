@@ -1,79 +1,66 @@
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// Scene setup
+// 1. Сцена и белый фон
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
-// Camera setup
+// 2. Камера
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.z = 5;
+camera.position.z = 4;
 
-// Renderer setup
+// 3. Рендерер
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.getElementById('app').appendChild(renderer.domElement);
 
-// Controls for rotation/interaction
+// 4. Управление мышкой (вращение)
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
+controls.enableDamping = true; // Плавность
 controls.dampingFactor = 0.05;
-controls.enablePan = false;
-controls.minDistance = 3;
-controls.maxDistance = 10;
 
-// Create cube geometry and material
+// 5. Чёрный куб (используем очень тёмно-серый 0x111111, чтобы на белом фоне были видны грани)
 const geometry = new THREE.BoxGeometry(2, 2, 2);
 const material = new THREE.MeshStandardMaterial({ 
-  color: 0x1a1a1a,
-  roughness: 0.5,
-  metalness: 0.2
+    color: 0x111111, 
+    roughness: 0.4, 
+    metalness: 0.1 
 });
 const cube = new THREE.Mesh(geometry, material);
 scene.add(cube);
 
-// Add edge geometry for clear outline
-const edgesGeometry = new THREE.EdgesGeometry(geometry);
-const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
-const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-cube.add(edges);
+// Добавим чёрную обводку, чтобы куб был идеально виден как 3D-объект
+const edges = new THREE.EdgesGeometry(geometry);
+const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+const wireframe = new THREE.LineSegments(edges, lineMaterial);
+cube.add(wireframe);
 
-// Add lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+// 6. Свет
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-directionalLight.position.set(5, 10, 7);
-scene.add(directionalLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(5, 5, 5);
+scene.add(dirLight);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xcccccc, 0.6);
-scene.add(hemisphereLight);
-
-const pointLight = new THREE.PointLight(0xffffff, 0.5);
-pointLight.position.set(-3, 5, 3);
-scene.add(pointLight);
-
-// Handle window resize
+// 7. Адаптация под размер окна
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Animation loop
+// 8. Анимация
 function animate() {
-  requestAnimationFrame(animate);
-  
-  // Subtle auto-rotation to show 3D depth
-  cube.rotation.x += 0.003;
-  cube.rotation.y += 0.005;
-  
-  // Update controls
-  controls.update();
-  
-  // Render scene
-  renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+    
+    // Медленное автовращение
+    cube.rotation.x += 0.005;
+    cube.rotation.y += 0.01;
+    
+    controls.update();
+    renderer.render(scene, camera);
 }
 
 animate();
