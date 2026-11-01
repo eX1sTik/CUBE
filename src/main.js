@@ -57,7 +57,13 @@ faceData.forEach((data, index) => {
     const face = new THREE.Mesh(faceGeometry, faceMaterial);
     face.position.set(...data.pos);
     face.rotation.set(...data.rot);
-    face.userData = { faceIndex: index, originalPosition: data.pos, originalRotation: data.rot };
+    face.userData = { 
+        faceIndex: index, 
+        originalPosition: data.pos, 
+        originalRotation: data.rot,
+        clickCount: 0,
+        maxClicks: 4
+    };
     scene.add(face);
     faces.push(face);
 });
@@ -119,8 +125,27 @@ function onClick(event) {
 
     if (intersects.length > 0) {
         const hitFace = intersects[0].object;
-        // Animate face disappearance
-        animateFaceOut(hitFace);
+        // Handle face click
+        handleFaceClick(hitFace);
+    }
+}
+
+function handleFaceClick(face) {
+    const userData = face.userData;
+    userData.clickCount++;
+    
+    // Calculate opacity: 1.0 -> 0.75 -> 0.5 -> 0.25 -> 0 (disappear)
+    const progress = userData.clickCount / userData.maxClicks;
+    const newOpacity = 1 - progress * 0.75; // 1.0, 0.75, 0.5, 0.25
+    
+    // Update material opacity
+    face.material.opacity = newOpacity;
+    face.material.transparent = newOpacity < 1;
+    face.material.needsUpdate = true;
+    
+    // If 4th click, animate disappearance
+    if (userData.clickCount >= userData.maxClicks) {
+        animateFaceOut(face);
     }
 }
 
@@ -129,7 +154,7 @@ function animateFaceOut(face) {
     const duration = 300; // ms
     const startScale = 1;
     const targetScale = 0.01;
-    const startOpacity = face.material.opacity !== undefined ? face.material.opacity : 1;
+    const startOpacity = face.material.opacity;
 
     function animate() {
         const elapsed = performance.now() - startTime;
@@ -146,8 +171,9 @@ function animateFaceOut(face) {
         } else {
             face.visible = false;
             face.scale.setScalar(1);
-            face.material.opacity = startOpacity;
+            face.material.opacity = 1;
             face.material.transparent = false;
+            face.userData.clickCount = 0; // Reset for potential future use
         }
     }
     animate();
