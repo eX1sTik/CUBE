@@ -27,6 +27,7 @@ controls.autoRotateSpeed = 0.3;
 const faceSize = 2;
 const halfSize = faceSize / 2;
 const faces = [];
+const faceWireframes = []; // Wireframe per face
 
 // Face data: [position, rotation, normal]
 const faceData = [
@@ -45,6 +46,18 @@ const faceData = [
 ];
 
 const faceGeometry = new THREE.PlaneGeometry(faceSize, faceSize);
+
+// Local edge geometry for a 2x2 face (in XY plane at Z=0)
+// This matches the PlaneGeometry exactly
+const localEdges = new Float32Array([
+    -halfSize, -halfSize, 0,  halfSize, -halfSize, 0,
+    halfSize, -halfSize, 0,  halfSize, halfSize, 0,
+    halfSize, halfSize, 0,  -halfSize, halfSize, 0,
+    -halfSize, halfSize, 0,  -halfSize, -halfSize, 0,
+]);
+
+const edgeGeometry = new THREE.BufferGeometry();
+edgeGeometry.setAttribute('position', new THREE.BufferAttribute(localEdges, 3));
 
 // Crack texture generator - produces visible cracks on ANY background
 class CrackTexture {
@@ -357,23 +370,26 @@ faceData.forEach((data, index) => {
     };
     scene.add(face);
     faces.push(face);
+
+    // Create wireframe for this face using shared local edge geometry
+    // The wireframe will be positioned/rotated exactly like the face
+    const edgeMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x333333, 
+        transparent: true, 
+        opacity: 0.4 
+    });
+    
+    const wireframe = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    wireframe.position.set(...data.pos);
+    wireframe.rotation.set(...data.rot);
+    scene.add(wireframe);
+    faceWireframes.push(wireframe);
 });
 
-// Wireframe - create edges for the whole cube
-const cubeGeometry = new THREE.BoxGeometry(faceSize, faceSize, faceSize);
-const edges = new THREE.EdgesGeometry(cubeGeometry);
-const lineMaterial = new THREE.LineBasicMaterial({ 
-    color: 0x333333, 
-    transparent: true, 
-    opacity: 0.4 
-});
-const wireframe = new THREE.LineSegments(edges, lineMaterial);
-scene.add(wireframe);
-
-// Group for rotation (contains faces + wireframe)
+// Group for rotation (contains faces + wireframes)
 const cubeGroup = new THREE.Group();
 faces.forEach(face => cubeGroup.add(face));
-cubeGroup.add(wireframe);
+faceWireframes.forEach(wf => cubeGroup.add(wf));
 scene.add(cubeGroup);
 
 // Lighting - multiple soft white lights
@@ -486,6 +502,11 @@ function animateFaceShatter(face) {
     const userData = face.userData;
     const crackTexture = userData.crackTexture;
     const faceIndex = userData.faceIndex;
+    
+    // Hide the corresponding wireframe immediately
+    if (faceWireframes[faceIndex]) {
+        faceWireframes[faceIndex].visible = false;
+    }
     
     const pieces = createShatterPieces(face, crackTexture);
     
@@ -813,7 +834,9 @@ function animate() {
     cubeGroup.rotation.y += 0.0008;
     
     const time = performance.now() * 0.001;
-    wireframe.material.opacity = 0.3 + Math.sin(time * 0.5) * 0.1;
+    faceWireframes.forEach(wf => {
+        wf.material.opacity = 0.3 + Math.sin(time * 0.5) * 0.1;
+    });
     
     renderer.render(scene, camera);
 }
