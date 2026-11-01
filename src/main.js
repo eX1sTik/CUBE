@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a0f);
+scene.background = new THREE.Color(0xffffff); // White background
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 0, 5);
@@ -23,33 +23,45 @@ controls.maxDistance = 10;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.3;
 
-// Cube
+// Cube - black material with white specular highlights
 const geometry = new THREE.BoxGeometry(2, 2, 2);
 const material = new THREE.MeshStandardMaterial({
-    color: 0x1a1a2e,
-    roughness: 0.3,
-    metalness: 0.2,
+    color: 0x000000,        // Black base color
+    roughness: 0.2,         // Low roughness for sharp highlights
+    metalness: 0.1,         // Slight metalness for specular reflection
+    envMapIntensity: 1.0,   // Environment map intensity
 });
 const cube = new THREE.Mesh(geometry, material);
 scene.add(cube);
 
-// Wireframe
+// Wireframe - subtle dark gray on white background
 const edges = new THREE.EdgesGeometry(geometry);
-const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+const lineMaterial = new THREE.LineBasicMaterial({ 
+    color: 0x333333, 
+    transparent: true, 
+    opacity: 0.4 
+});
 const wireframe = new THREE.LineSegments(edges, lineMaterial);
 cube.add(wireframe);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// Lighting - white lights for white highlights on black cube
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Soft white ambient
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0x00ffff, 0.8);
+// Main directional light - white, positioned for good highlights
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
 directionalLight.position.set(5, 10, 7);
 scene.add(directionalLight);
 
-const pointLight = new THREE.PointLight(0xff00ff, 0.5, 20);
-pointLight.position.set(-5, 3, -5);
-scene.add(pointLight);
+// Fill light - softer white from opposite side
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+fillLight.position.set(-5, 5, -7);
+scene.add(fillLight);
+
+// Rim light - white from behind for edge highlights
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.8);
+rimLight.position.set(0, -5, -10);
+scene.add(rimLight);
 
 // Minimal Audio Engine
 class AudioEngine {
@@ -197,7 +209,7 @@ function animate() {
     
     // Pulse wireframe opacity slightly
     const time = performance.now() * 0.001;
-    wireframe.material.opacity = 0.2 + Math.sin(time * 0.5) * 0.1;
+    wireframe.material.opacity = 0.3 + Math.sin(time * 0.5) * 0.1;
     
     renderer.render(scene, camera);
 }
