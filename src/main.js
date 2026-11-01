@@ -46,26 +46,45 @@ const faceData = [
 
 const faceGeometry = new THREE.PlaneGeometry(faceSize, faceSize);
 
-// Crack texture generator
+// Crack texture generator - produces both visible (map) and alpha (alphaMap) textures
 class CrackTexture {
     constructor(size = 512) {
         this.size = size;
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = size;
-        this.canvas.height = size;
-        this.ctx = this.canvas.getContext('2d');
+        
+        // Visible texture: black background with gray/white cracks (for map)
+        this.visibleCanvas = document.createElement('canvas');
+        this.visibleCanvas.width = size;
+        this.visibleCanvas.height = size;
+        this.visibleCtx = this.visibleCanvas.getContext('2d');
+        this.visibleTexture = new THREE.CanvasTexture(this.visibleCanvas);
+        this.visibleTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this.visibleTexture.wrapT = THREE.ClampToEdgeWrapping;
+        
+        // Alpha texture: white background with black cracks (for alphaMap on shatter pieces)
+        this.alphaCanvas = document.createElement('canvas');
+        this.alphaCanvas.width = size;
+        this.alphaCanvas.height = size;
+        this.alphaCtx = this.alphaCanvas.getContext('2d');
+        this.alphaTexture = new THREE.CanvasTexture(this.alphaCanvas);
+        this.alphaTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this.alphaTexture.wrapT = THREE.ClampToEdgeWrapping;
+        
         this.cracks = []; // Array of crack paths
-        this.texture = new THREE.CanvasTexture(this.canvas);
-        this.texture.wrapS = THREE.ClampToEdgeWrapping;
-        this.texture.wrapT = THREE.ClampToEdgeWrapping;
         this.clear();
     }
 
     clear() {
-        this.ctx.fillStyle = 'white'; // White = opaque (no cracks)
-        this.ctx.fillRect(0, 0, this.size, this.size);
+        // Visible: black background (matches cube face color)
+        this.visibleCtx.fillStyle = '#000000';
+        this.visibleCtx.fillRect(0, 0, this.size, this.size);
+        
+        // Alpha: white background (opaque)
+        this.alphaCtx.fillStyle = 'white';
+        this.alphaCtx.fillRect(0, 0, this.size, this.size);
+        
         this.cracks = [];
-        this.texture.needsUpdate = true;
+        this.visibleTexture.needsUpdate = true;
+        this.alphaTexture.needsUpdate = true;
     }
 
     // Generate a lightning-like crack path
@@ -115,27 +134,54 @@ class CrackTexture {
     }
 
     redraw() {
-        this.ctx.fillStyle = 'white';
-        this.ctx.fillRect(0, 0, this.size, this.size);
+        // Visible texture: black bg, gray/white cracks
+        this.visibleCtx.fillStyle = '#000000';
+        this.visibleCtx.fillRect(0, 0, this.size, this.size);
 
-        this.ctx.strokeStyle = 'black'; // Black = transparent (cracks)
-        this.ctx.lineWidth = 1.5;
-        this.ctx.lineCap = 'round';
-        this.ctx.lineJoin = 'round';
+        // Alpha texture: white bg, black cracks
+        this.alphaCtx.fillStyle = 'white';
+        this.alphaCtx.fillRect(0, 0, this.size, this.size);
 
         // Draw main cracks
         this.cracks.forEach(path => {
             if (path.length < 2) return;
-            this.ctx.beginPath();
-            this.ctx.moveTo(path[0].x, path[0].y);
+            
+            // Visible: draw gray/white crack lines
+            this.visibleCtx.strokeStyle = '#666666'; // Medium gray - visible on black
+            this.visibleCtx.lineWidth = 2.0;
+            this.visibleCtx.lineCap = 'round';
+            this.visibleCtx.lineJoin = 'round';
+            this.visibleCtx.beginPath();
+            this.visibleCtx.moveTo(path[0].x, path[0].y);
             for (let i = 1; i < path.length; i++) {
-                this.ctx.lineTo(path[i].x, path[i].y);
+                this.visibleCtx.lineTo(path[i].x, path[i].y);
             }
-            this.ctx.stroke();
+            this.visibleCtx.stroke();
+            
+            // Add highlight for glass-like effect
+            this.visibleCtx.strokeStyle = '#aaaaaa'; // Lighter highlight
+            this.visibleCtx.lineWidth = 0.8;
+            this.visibleCtx.beginPath();
+            this.visibleCtx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                this.visibleCtx.lineTo(path[i].x, path[i].y);
+            }
+            this.visibleCtx.stroke();
+
+            // Alpha: draw black crack lines (transparent)
+            this.alphaCtx.strokeStyle = 'black';
+            this.alphaCtx.lineWidth = 2.5; // Slightly wider for clean edges
+            this.alphaCtx.lineCap = 'round';
+            this.alphaCtx.lineJoin = 'round';
+            this.alphaCtx.beginPath();
+            this.alphaCtx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                this.alphaCtx.lineTo(path[i].x, path[i].y);
+            }
+            this.alphaCtx.stroke();
         });
 
         // Add fine detail cracks
-        this.ctx.lineWidth = 0.8;
         this.cracks.forEach(path => {
             if (path.length < 3) return;
             for (let i = 1; i < path.length - 1; i += 2) {
@@ -144,19 +190,36 @@ class CrackTexture {
                     const py = path[i].y;
                     const angle = Math.random() * Math.PI * 2;
                     const len = 5 + Math.random() * 15;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(px, py);
-                    this.ctx.lineTo(px + Math.cos(angle) * len, py + Math.sin(angle) * len);
-                    this.ctx.stroke();
+                    
+                    // Visible detail
+                    this.visibleCtx.strokeStyle = '#555555';
+                    this.visibleCtx.lineWidth = 1.0;
+                    this.visibleCtx.beginPath();
+                    this.visibleCtx.moveTo(px, py);
+                    this.visibleCtx.lineTo(px + Math.cos(angle) * len, py + Math.sin(angle) * len);
+                    this.visibleCtx.stroke();
+                    
+                    // Alpha detail
+                    this.alphaCtx.strokeStyle = 'black';
+                    this.alphaCtx.lineWidth = 1.5;
+                    this.alphaCtx.beginPath();
+                    this.alphaCtx.moveTo(px, py);
+                    this.alphaCtx.lineTo(px + Math.cos(angle) * len, py + Math.sin(angle) * len);
+                    this.alphaCtx.stroke();
                 }
             }
         });
 
-        this.texture.needsUpdate = true;
+        this.visibleTexture.needsUpdate = true;
+        this.alphaTexture.needsUpdate = true;
     }
 
-    getTexture() {
-        return this.texture;
+    getVisibleTexture() {
+        return this.visibleTexture;
+    }
+
+    getAlphaTexture() {
+        return this.alphaTexture;
     }
 
     getCrackCount() {
@@ -165,17 +228,17 @@ class CrackTexture {
 }
 
 faceData.forEach((data, index) => {
-    // Each face gets its own material with unique crack texture
+    // Each face gets its own crack texture generator
     const crackTexture = new CrackTexture(512);
     
+    // Main face material: use visible texture as map (color), no transparency
     const faceMaterial = new THREE.MeshStandardMaterial({
         color: 0x000000,
         roughness: 0.35,
         metalness: 0.0,
         side: THREE.DoubleSide,
-        alphaMap: crackTexture.getTexture(),
-        transparent: true,
-        alphaTest: 0.01, // Helps with sorting
+        map: crackTexture.getVisibleTexture(), // Visible cracks on black surface
+        // No alphaMap, no transparent - cracks are just color on the surface
     });
     
     const face = new THREE.Mesh(faceGeometry, faceMaterial);
@@ -317,8 +380,8 @@ function animateFaceShatter(face) {
                 piece.material.dispose();
             });
             face.visible = false;
-            face.material.alphaMap = crackTexture.getTexture(); // Restore original texture
-            crackTexture.clear(); // Reset for potential reuse
+            // Reset crack texture for potential reuse
+            crackTexture.clear();
             userData.clickCount = 0;
         }
     }
@@ -343,11 +406,17 @@ function createShatterPieces(face, crackTexture) {
         const size = 0.15 + Math.random() * 0.15;
         const geo = new THREE.BoxGeometry(size, size, 0.02);
         
-        // Use face material but with crack texture
-        const mat = face.material.clone();
-        mat.alphaMap = crackTexture.getTexture();
-        mat.transparent = true;
-        mat.side = THREE.DoubleSide;
+        // Shatter piece material: visible cracks + alpha transparency for crack holes
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x000000,
+            roughness: 0.35,
+            metalness: 0.0,
+            side: THREE.DoubleSide,
+            map: crackTexture.getVisibleTexture(),      // Visible gray cracks
+            alphaMap: crackTexture.getAlphaTexture(),   // Transparent crack holes
+            transparent: true,
+            alphaTest: 0.01,
+        });
         mat.needsUpdate = true;
         
         const piece = new THREE.Mesh(geo, mat);
