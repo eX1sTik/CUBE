@@ -5,7 +5,18 @@ export class AudioEngine {
         this.masterGain.connect(this.ctx.destination);
         this.masterGain.gain.value = 0.15;
         this.isPlaying = false;
-        this.startTime = this.ctx.currentTime; // Track when audio started for sync
+        this.startTime = 0;
+        this.bpm = 70;
+        this.beatInterval = 60 / this.bpm;
+        
+        // Event system for beat synchronization
+        this.beatListeners = [];
+        this.measureListeners = [];
+        this.currentBeat = 0; // 0-3
+        this.currentMeasure = 0;
+        this.scheduledAheadTime = 0.1; // Schedule 100ms ahead
+        this.lookahead = 25; // ms
+        this.scheduleIntervalId = null;
     }
 
     resume() {
@@ -16,29 +27,80 @@ export class AudioEngine {
         if (this.isPlaying) return;
         this.isPlaying = true;
         this.startTime = this.ctx.currentTime;
-        this.scheduleLoop();
+        this.currentBeat = 0;
+        this.currentMeasure = 0;
+        this.scheduledAheadTime = this.ctx.currentTime + 0.1;
+        this.scheduler();
     }
 
     stop() {
         this.isPlaying = false;
-    }
-
-    scheduleLoop() {
-        if (!this.isPlaying) return;
-        
-        const now = this.ctx.currentTime;
-        const bpm = 70;
-        const beatInterval = 60 / bpm;
-        
-        for (let i = 0; i < 4; i++) {
-            const time = now + i * beatInterval;
-            this.scheduleBeat(time, i % 4);
+        if (this.scheduleIntervalId) {
+            clearInterval(this.scheduleIntervalId);
+            this.scheduleIntervalId = null;
         }
-        
-        setTimeout(() => this.scheduleLoop(), beatInterval * 4 * 1000 * 0.95);
     }
 
-    scheduleBeat(time, beatIndex) {
+    // Subscribe to beat events
+    onBeat(callback) {
+        this.beatListeners.push(callback);
+        return () => {
+            const idx = this.beatListeners.indexOf(callback);
+            if (idx > -1) this.beatListeners.splice(idx, 1);
+        };
+    }
+
+    // Subscribe to measure (4 beats) events
+    onMeasure(callback) {
+        this.measureListeners.push(callback);
+        return () => {
+            const idx = this.measureListeners.indexOf(callback);
+            if (idx > -1) this.measureListeners.splice(idx, 1);
+        };
+    }
+
+    // Emit beat event to all listeners
+    emitBeat(beatTime, beatIndex, measureIndex) {
+        this.beatListeners.forEach(cb => cb(beatTime, beatIndex, measureIndex));
+    }
+
+    emitMeasure(measureTime, measureIndex) {
+        this.measureListeners.forEach(cb => cb(measureTime, measureIndex));
+    }
+
+    scheduler() {
+        if (!this.isPlaying) return;
+
+        const now = this.ctx.currentTime;
+        
+        // Schedule beats while we're behind
+        while (this.scheduledAheadTime < now + this.lookahead / 1000) {
+            this.scheduleBeat(this.scheduledAheadTime, this.currentBeat, this.currentMeasure);
+            this.scheduledAheadTime += this.beatInterval;
+            this.currentBeat = (this.currentBeat + 1) % 4;
+            if (this.currentBeat === 0) {
+                this.currentMeasure++;
+            }
+        }
+
+        // Check again in 25ms
+        this.scheduleIntervalId = setTimeout(() => this.scheduler(), this.lookahead);
+    }
+
+    scheduleBeat(time, beatIndex, measureIndex) {
+        // Emit beat event for visual sync (Metronome)
+        // Use a tiny setTimeout to align with audio thread timing
+        const delay = (time - this.ctx.currentTime) * 1000;
+        if (delay > -50 && delay < 500) { // Only emit if reasonably close
+            setTimeout(() => {
+                this.emitBeat(time, beatIndex, measureIndex);
+                if (beatIndex === 0) {
+                    this.emitMeasure(time, measureIndex);
+                }
+            }, Math.max(0, delay));
+        }
+
+        // Audio: Kick on beats 1 and 3 (0 and 2)
         if (beatIndex % 2 === 0) {
             const kick = this.ctx.createOscillator();
             const kickGain = this.ctx.createGain();
@@ -52,10 +114,12 @@ export class AudioEngine {
             kick.stop(time + 1);
         }
 
+        // Pad on beat 1 (downbeat)
         if (beatIndex === 0) {
             this.playPad(time);
         }
 
+        // Hi-hat on beats 2 and 4 (1 and 3)
         if (beatIndex % 2 === 1) {
             this.playHihat(time);
         }
@@ -106,6 +170,18 @@ export class AudioEngine {
         gain.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
         
         noise.start(time);
+    }
+
+    // Get current timing info
+    getTimingInfo() {
+        return {
+            bpm: this.bpm,
+            beatInterval: this.beatInterval,
+            currentBeat: this.currentBeat,
+            currentMeasure: this.currentMeasure,
+            startTime: this.startTime,
+            isPlaying: this.isPlaying
+        };
     }
 }
 

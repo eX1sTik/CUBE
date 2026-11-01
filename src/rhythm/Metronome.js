@@ -4,9 +4,9 @@ export class Metronome {
     constructor(audioEngine) {
         this.audioEngine = audioEngine;
         this.bpm = 70;
-        this.beatInterval = 60 / this.bpm; // seconds per beat
+        this.beatInterval = 60 / this.bpm;
         
-        // Beat tracking
+        // Beat tracking - now driven by audio engine events
         this.currentBeat = 0; // 0-3 (for 4 beats per measure)
         this.measureCount = 0;
         this.isActive = false;
@@ -16,9 +16,9 @@ export class Metronome {
         this.circleGroup = null;
         this.createCircles();
         
-        // Sync with audio engine
-        this.lastSyncTime = 0;
-        this.syncTolerance = 0.05; // 50ms tolerance for sync
+        // Unsubscribe functions
+        this.unsubscribeBeat = null;
+        this.unsubscribeMeasure = null;
     }
     
     createCircles() {
@@ -97,52 +97,32 @@ export class Metronome {
         this.measureCount = 0;
         this.updateCircles();
         
-        // Sync with audio engine's next beat
-        this.syncWithAudioEngine();
+        // Subscribe to audio engine beat events
+        this.unsubscribeBeat = this.audioEngine.onBeat((beatTime, beatIndex, measureIndex) => {
+            if (!this.isActive) return;
+            this.currentBeat = beatIndex;
+            this.measureCount = measureIndex;
+            this.updateCircles();
+            this.pulseCurrentCircle();
+        });
+        
+        this.unsubscribeMeasure = this.audioEngine.onMeasure((measureTime, measureIndex) => {
+            if (!this.isActive) return;
+            this.measureCount = measureIndex;
+        });
+        
+        // Sync initial state from audio engine
+        const timing = this.audioEngine.getTimingInfo();
+        this.currentBeat = timing.currentBeat;
+        this.measureCount = timing.currentMeasure;
+        this.updateCircles();
     }
     
     stop() {
         this.isActive = false;
+        if (this.unsubscribeBeat) this.unsubscribeBeat();
+        if (this.unsubscribeMeasure) this.unsubscribeMeasure();
         this.resetCircles();
-    }
-    
-    syncWithAudioEngine() {
-        if (!this.isActive) return;
-        
-        const now = this.audioEngine.ctx.currentTime;
-        
-        // Calculate when the next beat should occur based on audio engine's schedule
-        // The audio engine schedules beats in groups of 4, so we need to find our position
-        const timeSinceStart = now - (this.audioEngine.startTime || now);
-        const beatsSinceStart = timeSinceStart / this.beatInterval;
-        
-        // Set current beat based on audio timing
-        this.currentBeat = Math.floor(beatsSinceStart) % 4;
-        this.measureCount = Math.floor(beatsSinceStart / 4);
-        
-        this.updateCircles();
-        
-        // Schedule next beat check
-        const nextBeatTime = Math.ceil(beatsSinceStart) * this.beatInterval + (this.audioEngine.startTime || now);
-        const delay = Math.max(0, (nextBeatTime - now) * 1000);
-        
-        setTimeout(() => this.onBeat(), delay);
-    }
-    
-    onBeat() {
-        if (!this.isActive) return;
-        
-        // Advance beat
-        this.currentBeat = (this.currentBeat + 1) % 4;
-        if (this.currentBeat === 0) {
-            this.measureCount++;
-        }
-        
-        this.updateCircles();
-        this.pulseCurrentCircle();
-        
-        // Schedule next beat
-        setTimeout(() => this.onBeat(), this.beatInterval * 1000 * 0.995); // Slight adjustment for drift
     }
     
     updateCircles() {
@@ -258,7 +238,12 @@ export class Metronome {
     
     // Manual beat trigger (for testing or manual sync)
     triggerBeat() {
-        this.onBeat();
+        this.currentBeat = (this.currentBeat + 1) % 4;
+        if (this.currentBeat === 0) {
+            this.measureCount++;
+        }
+        this.updateCircles();
+        this.pulseCurrentCircle();
     }
     
     // Set BPM (updates interval)
