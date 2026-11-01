@@ -23,47 +23,77 @@ controls.maxDistance = 10;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.3;
 
-// Cube - black material with soft white highlights, no mirror reflections
-const geometry = new THREE.BoxGeometry(2, 2, 2);
-const material = new THREE.MeshStandardMaterial({
-    color: 0x000000,        // Black base color
-    roughness: 0.35,        // Higher roughness for softer, less distinct highlights
-    metalness: 0.0,         // Zero metalness = dielectric (non-metallic) specular
-    envMapIntensity: 0.0,   // No environment map reflection
-});
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
+// Create cube as 6 separate face meshes
+const faceSize = 2;
+const halfSize = faceSize / 2;
+const faces = [];
 
-// Wireframe - subtle dark gray on white background
-const edges = new THREE.EdgesGeometry(geometry);
+// Face data: [position, rotation, normal]
+const faceData = [
+    // Front (+Z)
+    { pos: [0, 0, halfSize], rot: [0, 0, 0], normal: [0, 0, 1] },
+    // Back (-Z)
+    { pos: [0, 0, -halfSize], rot: [0, Math.PI, 0], normal: [0, 0, -1] },
+    // Right (+X)
+    { pos: [halfSize, 0, 0], rot: [0, -Math.PI / 2, 0], normal: [1, 0, 0] },
+    // Left (-X)
+    { pos: [-halfSize, 0, 0], rot: [0, Math.PI / 2, 0], normal: [-1, 0, 0] },
+    // Top (+Y)
+    { pos: [0, halfSize, 0], rot: [-Math.PI / 2, 0, 0], normal: [0, 1, 0] },
+    // Bottom (-Y)
+    { pos: [0, -halfSize, 0], rot: [Math.PI / 2, 0, 0], normal: [0, -1, 0] },
+];
+
+const faceGeometry = new THREE.PlaneGeometry(faceSize, faceSize);
+const faceMaterial = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    roughness: 0.35,
+    metalness: 0.0,
+    side: THREE.DoubleSide, // Visible from both sides
+});
+
+faceData.forEach((data, index) => {
+    const face = new THREE.Mesh(faceGeometry, faceMaterial);
+    face.position.set(...data.pos);
+    face.rotation.set(...data.rot);
+    face.userData = { faceIndex: index, originalPosition: data.pos, originalRotation: data.rot };
+    scene.add(face);
+    faces.push(face);
+});
+
+// Wireframe - create edges for the whole cube
+const cubeGeometry = new THREE.BoxGeometry(faceSize, faceSize, faceSize);
+const edges = new THREE.EdgesGeometry(cubeGeometry);
 const lineMaterial = new THREE.LineBasicMaterial({ 
     color: 0x333333, 
     transparent: true, 
     opacity: 0.4 
 });
 const wireframe = new THREE.LineSegments(edges, lineMaterial);
-cube.add(wireframe);
+scene.add(wireframe);
 
-// Lighting - multiple soft white lights for even highlights without distinct "sun" reflections
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Increased ambient for base illumination
+// Group for rotation (contains faces + wireframe)
+const cubeGroup = new THREE.Group();
+faces.forEach(face => cubeGroup.add(face));
+cubeGroup.add(wireframe);
+scene.add(cubeGroup);
+
+// Lighting - multiple soft white lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
-// Main directional light - softer, less intense
 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
 directionalLight.position.set(5, 10, 7);
 scene.add(directionalLight);
 
-// Fill light - softer white from opposite side
 const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
 fillLight.position.set(-5, 5, -7);
 scene.add(fillLight);
 
-// Top light - for top face highlights
 const topLight = new THREE.DirectionalLight(0xffffff, 0.4);
 topLight.position.set(0, 10, 0);
 scene.add(topLight);
 
-// Side lights for even coverage
 const sideLight1 = new THREE.DirectionalLight(0xffffff, 0.3);
 sideLight1.position.set(10, 0, 5);
 scene.add(sideLight1);
@@ -71,6 +101,58 @@ scene.add(sideLight1);
 const sideLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
 sideLight2.position.set(-10, 0, -5);
 scene.add(sideLight2);
+
+// Raycaster for click detection
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// Click handler
+function onClick(event) {
+    // Calculate mouse position in normalized device coordinates
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Raycast against face meshes only
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(faces.filter(f => f.visible), true);
+
+    if (intersects.length > 0) {
+        const hitFace = intersects[0].object;
+        // Animate face disappearance
+        animateFaceOut(hitFace);
+    }
+}
+
+function animateFaceOut(face) {
+    const startTime = performance.now();
+    const duration = 300; // ms
+    const startScale = 1;
+    const targetScale = 0.01;
+    const startOpacity = face.material.opacity !== undefined ? face.material.opacity : 1;
+
+    function animate() {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+
+        face.scale.setScalar(startScale + (targetScale - startScale) * eased);
+        face.material.opacity = startOpacity * (1 - eased);
+        face.material.transparent = true;
+        face.material.needsUpdate = true;
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            face.visible = false;
+            face.scale.setScalar(1);
+            face.material.opacity = startOpacity;
+            face.material.transparent = false;
+        }
+    }
+    animate();
+}
+
+window.addEventListener('click', onClick);
 
 // Minimal Audio Engine
 class AudioEngine {
@@ -103,18 +185,15 @@ class AudioEngine {
         const bpm = 70;
         const beatInterval = 60 / bpm;
         
-        // Schedule 4 beats ahead
         for (let i = 0; i < 4; i++) {
             const time = now + i * beatInterval;
             this.scheduleBeat(time, i % 4);
         }
         
-        // Schedule next loop
         setTimeout(() => this.scheduleLoop(), beatInterval * 4 * 1000 * 0.95);
     }
 
     scheduleBeat(time, beatIndex) {
-        // Kick - deep and minimal
         if (beatIndex % 2 === 0) {
             const kick = this.ctx.createOscillator();
             const kickGain = this.ctx.createGain();
@@ -128,20 +207,18 @@ class AudioEngine {
             kick.stop(time + 1);
         }
 
-        // Atmospheric pad - every 4 beats
         if (beatIndex === 0) {
             this.playPad(time);
         }
 
-        // Subtle hi-hat on off-beats
         if (beatIndex % 2 === 1) {
             this.playHihat(time);
         }
     }
 
     playPad(time) {
-        const frequencies = [65.41, 82.41, 98.00, 130.81]; // C2, E2, G2, C3
-        frequencies.forEach((freq, i) => {
+        const frequencies = [65.41, 82.41, 98.00, 130.81];
+        frequencies.forEach((freq) => {
             const osc = this.ctx.createOscillator();
             const gain = this.ctx.createGain();
             const filter = this.ctx.createBiquadFilter();
@@ -189,7 +266,6 @@ class AudioEngine {
 
 const audioEngine = new AudioEngine();
 
-// Start audio on first interaction
 function initAudio() {
     audioEngine.resume();
     if (!audioEngine.isPlaying) audioEngine.start();
@@ -212,9 +288,9 @@ function animate() {
     
     controls.update();
     
-    // Subtle cube rotation (in addition to orbit controls auto-rotate)
-    cube.rotation.x += 0.0005;
-    cube.rotation.y += 0.0008;
+    // Subtle cube rotation
+    cubeGroup.rotation.x += 0.0005;
+    cubeGroup.rotation.y += 0.0008;
     
     // Pulse wireframe opacity slightly
     const time = performance.now() * 0.001;
