@@ -5,6 +5,7 @@ export class AudioEngine {
         this.masterGain.connect(this.ctx.destination);
         this.masterGain.gain.value = 0.15;
         this.isPlaying = false;
+        this.startTime = this.ctx.currentTime; // Track when audio started for sync
     }
 
     resume() {
@@ -14,6 +15,7 @@ export class AudioEngine {
     start() {
         if (this.isPlaying) return;
         this.isPlaying = true;
+        this.startTime = this.ctx.currentTime;
         this.scheduleLoop();
     }
 
@@ -117,4 +119,8 @@ export function initAudio() {
     if (!audioEngineInstance.isPlaying) audioEngineInstance.start();
     window.removeEventListener('click', initAudio);
     window.removeEventListener('keydown', initAudio);
+}
+
+export function getAudioEngine() {
+    return audioEngineInstance;
 }
