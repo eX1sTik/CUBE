@@ -23,13 +23,13 @@ controls.maxDistance = 10;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.3;
 
-// Cube - black material with white specular highlights
+// Cube - black material with soft white highlights, no mirror reflections
 const geometry = new THREE.BoxGeometry(2, 2, 2);
 const material = new THREE.MeshStandardMaterial({
     color: 0x000000,        // Black base color
-    roughness: 0.2,         // Low roughness for sharp highlights
-    metalness: 0.1,         // Slight metalness for specular reflection
-    envMapIntensity: 1.0,   // Environment map intensity
+    roughness: 0.35,        // Higher roughness for softer, less distinct highlights
+    metalness: 0.0,         // Zero metalness = dielectric (non-metallic) specular
+    envMapIntensity: 0.0,   // No environment map reflection
 });
 const cube = new THREE.Mesh(geometry, material);
 scene.add(cube);
@@ -44,12 +44,12 @@ const lineMaterial = new THREE.LineBasicMaterial({
 const wireframe = new THREE.LineSegments(edges, lineMaterial);
 cube.add(wireframe);
 
-// Lighting - white lights for white highlights on black cube
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Soft white ambient
+// Lighting - multiple soft white lights for even highlights without distinct "sun" reflections
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Increased ambient for base illumination
 scene.add(ambientLight);
 
-// Main directional light - white, positioned for good highlights
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+// Main directional light - softer, less intense
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
 directionalLight.position.set(5, 10, 7);
 scene.add(directionalLight);
 
@@ -58,10 +58,19 @@ const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
 fillLight.position.set(-5, 5, -7);
 scene.add(fillLight);
 
-// Rim light - white from behind for edge highlights
-const rimLight = new THREE.DirectionalLight(0xffffff, 0.8);
-rimLight.position.set(0, -5, -10);
-scene.add(rimLight);
+// Top light - for top face highlights
+const topLight = new THREE.DirectionalLight(0xffffff, 0.4);
+topLight.position.set(0, 10, 0);
+scene.add(topLight);
+
+// Side lights for even coverage
+const sideLight1 = new THREE.DirectionalLight(0xffffff, 0.3);
+sideLight1.position.set(10, 0, 5);
+scene.add(sideLight1);
+
+const sideLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+sideLight2.position.set(-10, 0, -5);
+scene.add(sideLight2);
 
 // Minimal Audio Engine
 class AudioEngine {
