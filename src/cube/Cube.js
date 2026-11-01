@@ -35,8 +35,10 @@ export function createCube(scene) {
     faceData.forEach((data, index) => {
         const crackTexture = new CrackTexture(512);
         
+        // Use white color so the map texture (cracks) shows through correctly
+        // Black color would multiply with the map and make everything black
         const faceMaterial = new THREE.MeshStandardMaterial({
-            color: 0x000000,
+            color: 0xffffff,
             roughness: 0.35,
             metalness: 0.0,
             side: THREE.DoubleSide,
