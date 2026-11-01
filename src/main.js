@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCube, setupCubeInteraction } from './cube/Cube.js';
-import { initAudio } from './audio/AudioEngine.js';
+import { initAudio, getAudioEngine } from './audio/AudioEngine.js';
+import { createMetronome } from './rhythm/Metronome.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -27,7 +28,20 @@ controls.autoRotateSpeed = 0.3;
 
 // Create cube with interaction
 const { cubeGroup, faces, faceWireframes } = createCube(scene);
+
+// Initialize audio and metronome
+initAudio();
+const audioEngine = getAudioEngine();
+const metronome = createMetronome(audioEngine);
+
+// Setup cube interaction (without rhythm system for now)
 setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls);
+
+// Add metronome visual elements to scene
+scene.add(metronome.getCircleGroup());
+
+// Start metronome
+metronome.start();
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -52,9 +66,6 @@ scene.add(sideLight1);
 const sideLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
 sideLight2.position.set(-10, 0, -5);
 scene.add(sideLight2);
-
-// Audio
-initAudio();
 
 // Resize
 window.addEventListener('resize', () => {
