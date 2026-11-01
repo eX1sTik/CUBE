@@ -55,9 +55,9 @@ window.addEventListener('resize', () => {
 function animate() {
     requestAnimationFrame(animate);
     
-    // Медленное автовращение
-    cube.rotation.x += 0.005;
-    cube.rotation.y += 0.01;
+    // Медленное автовращение (уменьшена скорость)
+    cube.rotation.x += 0.001;
+    cube.rotation.y += 0.002;
     
     controls.update();
     renderer.render(scene, camera);
