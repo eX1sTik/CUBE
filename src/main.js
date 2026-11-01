@@ -546,23 +546,18 @@ class SolidCube {
     }
 
     handleFaceClick(faceIdx, hitPoint) {
-        const beatProgress = audioEngine.getBeatProgress();
-        const isOnBeat = beatProgress < this.perfectClickWindow || beatProgress > (1 - this.perfectClickWindow);
-        
-        if (isOnBeat) {
-            this.faceClickCounts[faceIdx]++;
-            
-            // Add crack to this face
-            const crackCount = this.crackSystem.addCrack(faceIdx, hitPoint, this.faceNormals[faceIdx], this.cube.matrixWorld);
-            
-            // Hit particles
-            this.createHitParticles(hitPoint.clone(), this.faceNormals[faceIdx]);
-            
-            if (this.faceClickCounts[faceIdx] >= this.clicksPerFaceToDestroy) {
-                this.destroyFace(faceIdx, hitPoint);
-            }
+        // Every click on a face counts toward its destruction, regardless of beat timing.
+        this.faceClickCounts[faceIdx]++;
+
+        // Add crack to this face
+        this.crackSystem.addCrack(faceIdx, hitPoint, this.faceNormals[faceIdx], this.cube.matrixWorld);
+
+        // Hit particles
+        this.createHitParticles(hitPoint.clone(), this.faceNormals[faceIdx]);
+
+        if (this.faceClickCounts[faceIdx] >= this.clicksPerFaceToDestroy) {
+            this.destroyFace(faceIdx, hitPoint);
         }
-        // If off-beat, do nothing (no feedback, no penalty)
     }
 
     createHitParticles(position, normal) {
