@@ -136,7 +136,7 @@ class CrackSystem {
         this.crackTextures = new Map(); // faceIdx -> texture
         this.crackMeshes = new Map();   // faceIdx -> mesh
         this.crackCounts = [0, 0, 0, 0, 0, 0];
-        this.maxCracks = 8;
+        this.maxCracks = 4;
     }
 
     getCanvas(faceIdx) {
@@ -200,56 +200,84 @@ class CrackSystem {
     }
 
     drawCrack(ctx, cx, cy, crackIndex) {
-        // Draw a lightning-like crack
-        const segments = 4 + Math.floor(crackIndex / 2);
-        const length = 30 + crackIndex * 8;
-        const angle = (crackIndex * 0.7 + Math.random() * 0.5) * Math.PI * 2;
-        
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2 + Math.min(crackIndex, 3);
+        // Glass-like progressive cracking.
+        // crackIndex 0..3 -> small crack on first hit, full-face shatter on fourth.
+        const numRadials = 4 + crackIndex * 2;      // 4, 6, 8, 10
+        const baseLength = 50 + crackIndex * 70;    // 50, 120, 190, 260
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.shadowColor = '#000000';
-        ctx.shadowBlur = 4;
-        
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+        ctx.shadowBlur = 3;
+
+        // Radial cracks emanating from the impact point
+        for (let i = 0; i < numRadials; i++) {
+            const angle = (i / numRadials) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+            this.drawRadialCrack(ctx, cx, cy, angle, baseLength, crackIndex);
+        }
+
+        // Concentric rings appear from the second hit onward
+        if (crackIndex >= 1) {
+            const rings = crackIndex; // 1, 2, 3
+            for (let r = 0; r < rings; r++) {
+                const radius = 25 + r * 35 + crackIndex * 20;
+                this.drawCrackRing(ctx, cx, cy, radius, crackIndex);
+            }
+        }
+
+        // Impact crater at the center
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3 + crackIndex * 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawRadialCrack(ctx, cx, cy, angle, length, crackIndex) {
+        ctx.lineWidth = 1.5 + crackIndex * 0.6;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
-        
+
         let x = cx, y = cy;
         let currentAngle = angle;
-        
+        const segments = 3 + crackIndex;
+        const segLength = length / segments;
+
         for (let i = 0; i < segments; i++) {
-            const segLength = length / segments * (0.7 + Math.random() * 0.6);
-            currentAngle += (Math.random() - 0.5) * 1.2;
-            x += Math.cos(currentAngle) * segLength;
-            y += Math.sin(currentAngle) * segLength;
-            
-            // Keep within bounds
-            x = Math.max(20, Math.min(492, x));
-            y = Math.max(20, Math.min(492, y));
-            
+            currentAngle += (Math.random() - 0.5) * 0.5;
+            x += Math.cos(currentAngle) * segLength * (0.7 + Math.random() * 0.6);
+            y += Math.sin(currentAngle) * segLength * (0.7 + Math.random() * 0.6);
+            x = Math.max(5, Math.min(507, x));
+            y = Math.max(5, Math.min(507, y));
             ctx.lineTo(x, y);
-            
-            // Branch occasionally
-            if (Math.random() < 0.3 && i < segments - 1) {
-                const branchAngle = currentAngle + (Math.random() - 0.5) * Math.PI;
-                const branchLength = segLength * 0.5;
-                const bx = x + Math.cos(branchAngle) * branchLength;
-                const by = y + Math.sin(branchAngle) * branchLength;
+
+            // Occasional branch for a more shattered look
+            if (Math.random() < 0.35 && i < segments - 1) {
+                const branchAngle = currentAngle + (Math.random() - 0.5) * 1.6;
+                const branchLen = segLength * (0.4 + Math.random() * 0.5);
+                const bx = x + Math.cos(branchAngle) * branchLen;
+                const by = y + Math.sin(branchAngle) * branchLen;
                 ctx.moveTo(x, y);
                 ctx.lineTo(bx, by);
                 ctx.moveTo(x, y);
             }
         }
         ctx.stroke();
-        
-        // Add small impact crater at center
-        if (crackIndex === 0) {
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
-            ctx.beginPath();
-            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
-            ctx.fill();
+    }
+
+    drawCrackRing(ctx, cx, cy, radius, crackIndex) {
+        ctx.lineWidth = 1 + crackIndex * 0.4;
+        ctx.beginPath();
+        const segments = 14;
+        for (let i = 0; i <= segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const r = radius * (0.85 + Math.random() * 0.3);
+            const x = cx + Math.cos(angle) * r;
+            const y = cy + Math.sin(angle) * r;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
         }
+        ctx.stroke();
     }
 
     createCrackMesh(faceIdx, faceNormal, faceCenter) {
@@ -405,7 +433,7 @@ class SolidCube {
         this.crackMeshes = new Map(); // faceIdx -> crack mesh
         this.destroyedFaces = new Set();
         this.faceClickCounts = [0, 0, 0, 0, 0, 0];
-        this.clicksPerFaceToDestroy = 8;
+        this.clicksPerFaceToDestroy = 4;
         this.perfectClickWindow = 0.18;
         this.faceNormals = [
             new THREE.Vector3(0, 0, 1),   // Front
