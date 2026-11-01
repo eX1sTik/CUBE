@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 export class CrackTexture {
     constructor(size = 512) {
         this.size = size;
