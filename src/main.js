@@ -7,16 +7,17 @@ class AudioEngine {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.masterGain = this.ctx.createGain();
         this.masterGain.connect(this.ctx.destination);
-        this.masterGain.gain.value = 0.3;
+        this.masterGain.gain.value = 0.25;
         this.isPlaying = false;
         this.currentTime = 0;
-        this.bpm = 90;
+        this.bpm = 100;
         this.beatInterval = 60 / this.bpm;
         this.nextBeatTime = 0;
         this.onBeatCallbacks = [];
         this.scheduleAheadTime = 0.1;
         this.lookahead = 25;
         this.timerID = null;
+        this.beatCount = 0;
     }
 
     resume() {
@@ -60,18 +61,19 @@ class AudioEngine {
         kick.stop(time + 0.5);
 
         // Ambient pad (every 4 beats)
-        if (Math.floor(this.currentTime / this.beatInterval) % 4 === 0) {
+        if (this.beatCount % 4 === 0) {
             this.playPad(time);
         }
 
         // Hi-hat (off-beats)
-        if (Math.floor(this.currentTime / this.beatInterval) % 2 === 1) {
+        if (this.beatCount % 2 === 1) {
             this.playHihat(time);
         }
 
         // Trigger callbacks
         this.onBeatCallbacks.forEach(cb => cb(time));
         this.currentTime = time;
+        this.beatCount++;
     }
 
     playPad(time) {
@@ -86,10 +88,10 @@ class AudioEngine {
             osc.type = 'sine';
             osc.frequency.value = freq;
             filter.type = 'lowpass';
-            filter.frequency.value = 800;
+            filter.frequency.value = 600;
             filter.Q.value = 2;
             gain.gain.setValueAtTime(0, time);
-            gain.gain.linearRampToValueAtTime(0.15, time + 0.5);
+            gain.gain.linearRampToValueAtTime(0.1, time + 0.5);
             gain.gain.exponentialRampToValueAtTime(0.01, time + 4);
             osc.start(time);
             osc.stop(time + 4);
@@ -98,7 +100,7 @@ class AudioEngine {
 
     playHihat(time) {
         const noise = this.ctx.createBufferSource();
-        const bufferSize = this.ctx.sampleRate * 0.1;
+        const bufferSize = this.ctx.sampleRate * 0.05;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -110,11 +112,11 @@ class AudioEngine {
         filter.connect(gain);
         gain.connect(this.masterGain);
         filter.type = 'highpass';
-        filter.frequency.value = 8000;
-        gain.gain.setValueAtTime(0.05, time);
-        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        filter.frequency.value = 10000;
+        gain.gain.setValueAtTime(0.03, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
         noise.start(time);
-        noise.stop(time + 0.1);
+        noise.stop(time + 0.05);
     }
 
     onBeat(callback) {
@@ -127,176 +129,421 @@ class AudioEngine {
     }
 }
 
-// ============ CUBE DESTRUCTION SYSTEM ============
-class DestructibleCube {
-    constructor(scene) {
-        this.scene = scene;
-        this.faces = [];
-        this.isDestroying = false;
-        this.destroyProgress = 0;
-        this.clickCount = 0;
-        this.requiredClicks = 8;
-        this.lastClickTime = 0;
-        this.perfectClickWindow = 0.15; // seconds around beat
-        
-        this.createCube();
+// ============ CRACK SYSTEM ============
+class CrackSystem {
+    constructor() {
+        this.crackCanvases = new Map(); // faceIdx -> canvas
+        this.crackTextures = new Map(); // faceIdx -> texture
+        this.crackMeshes = new Map();   // faceIdx -> mesh
+        this.crackCounts = [0, 0, 0, 0, 0, 0];
+        this.maxCracks = 8;
     }
 
-    createCube() {
-        const size = 2;
-        const half = size / 2;
-        const faceData = [
-            { pos: [0, 0, half], rot: [0, 0, 0], normal: [0, 0, 1] },      // Front
-            { pos: [0, 0, -half], rot: [0, Math.PI, 0], normal: [0, 0, -1] }, // Back
-            { pos: [half, 0, 0], rot: [0, -Math.PI/2, 0], normal: [1, 0, 0] }, // Right
-            { pos: [-half, 0, 0], rot: [0, Math.PI/2, 0], normal: [-1, 0, 0] }, // Left
-            { pos: [0, half, 0], rot: [-Math.PI/2, 0, 0], normal: [0, 1, 0] },  // Top
-            { pos: [0, -half, 0], rot: [Math.PI/2, 0, 0], normal: [0, -1, 0] }, // Bottom
+    getCanvas(faceIdx) {
+        if (!this.crackCanvases.has(faceIdx)) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.fillRect(0, 0, 512, 512);
+            this.crackCanvases.set(faceIdx, canvas);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            this.crackTextures.set(faceIdx, texture);
+        }
+        return this.crackCanvases.get(faceIdx);
+    }
+
+    getTexture(faceIdx) {
+        this.getCanvas(faceIdx);
+        return this.crackTextures.get(faceIdx);
+    }
+
+    addCrack(faceIdx, hitPoint, faceNormal, cubeMatrix) {
+        const canvas = this.getCanvas(faceIdx);
+        const ctx = canvas.getContext('2d');
+        
+        // Convert 3D hit point to local face UV coordinates (0-1)
+        const localPoint = hitPoint.clone().applyMatrix4(cubeMatrix.clone().invert());
+        const uv = this.worldToFaceUV(localPoint, faceNormal);
+        
+        // Draw crack at UV position
+        this.drawCrack(ctx, uv.x * 512, uv.y * 512, this.crackCounts[faceIdx]);
+        
+        this.crackCounts[faceIdx]++;
+        this.crackTextures.get(faceIdx).needsUpdate = true;
+        
+        return this.crackCounts[faceIdx];
+    }
+
+    worldToFaceUV(point, normal) {
+        // point is in cube local space (-1 to 1)
+        // Convert to UV (0 to 1) based on face normal
+        let u, v;
+        if (Math.abs(normal.z) === 1) { // Front/Back
+            u = (point.x + 1) / 2;
+            v = (point.y + 1) / 2;
+            if (normal.z === -1) u = 1 - u; // Back face UV flip
+        } else if (Math.abs(normal.x) === 1) { // Right/Left
+            u = (point.z * -normal.x + 1) / 2;
+            v = (point.y + 1) / 2;
+            if (normal.x === -1) u = 1 - u; // Left face UV flip
+        } else { // Top/Bottom
+            u = (point.x + 1) / 2;
+            v = (point.z * -normal.y + 1) / 2;
+            if (normal.y === -1) v = 1 - v; // Bottom face UV flip
+        }
+        return { x: Math.max(0, Math.min(1, u)), y: Math.max(0, Math.min(1, v)) };
+    }
+
+    drawCrack(ctx, cx, cy, crackIndex) {
+        // Draw a lightning-like crack
+        const segments = 4 + Math.floor(crackIndex / 2);
+        const length = 30 + crackIndex * 8;
+        const angle = (crackIndex * 0.7 + Math.random() * 0.5) * Math.PI * 2;
+        
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2 + Math.min(crackIndex, 3);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = '#000000';
+        ctx.shadowBlur = 4;
+        
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        
+        let x = cx, y = cy;
+        let currentAngle = angle;
+        
+        for (let i = 0; i < segments; i++) {
+            const segLength = length / segments * (0.7 + Math.random() * 0.6);
+            currentAngle += (Math.random() - 0.5) * 1.2;
+            x += Math.cos(currentAngle) * segLength;
+            y += Math.sin(currentAngle) * segLength;
+            
+            // Keep within bounds
+            x = Math.max(20, Math.min(492, x));
+            y = Math.max(20, Math.min(492, y));
+            
+            ctx.lineTo(x, y);
+            
+            // Branch occasionally
+            if (Math.random() < 0.3 && i < segments - 1) {
+                const branchAngle = currentAngle + (Math.random() - 0.5) * Math.PI;
+                const branchLength = segLength * 0.5;
+                const bx = x + Math.cos(branchAngle) * branchLength;
+                const by = y + Math.sin(branchAngle) * branchLength;
+                ctx.moveTo(x, y);
+                ctx.lineTo(bx, by);
+                ctx.moveTo(x, y);
+            }
+        }
+        ctx.stroke();
+        
+        // Add small impact crater at center
+        if (crackIndex === 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    createCrackMesh(faceIdx, faceNormal, faceCenter) {
+        if (this.crackMeshes.has(faceIdx)) return this.crackMeshes.get(faceIdx);
+        
+        const geometry = new THREE.PlaneGeometry(2.01, 2.01); // Slightly larger than face
+        const material = new THREE.MeshBasicMaterial({
+            map: this.getTexture(faceIdx),
+            transparent: true,
+            opacity: 1,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        // Position at face center, slightly offset to avoid z-fighting
+        mesh.position.copy(faceCenter).addScaledVector(faceNormal, 0.01);
+        mesh.lookAt(mesh.position.clone().add(faceNormal));
+        mesh.rotateY(Math.PI);
+        
+        this.crackMeshes.set(faceIdx, mesh);
+        return mesh;
+    }
+
+    removeCrackMesh(faceIdx) {
+        const mesh = this.crackMeshes.get(faceIdx);
+        if (mesh) {
+            mesh.geometry.dispose();
+            mesh.material.map?.dispose();
+            mesh.material.dispose();
+            this.crackMeshes.delete(faceIdx);
+        }
+        this.crackCanvases.delete(faceIdx);
+        this.crackTextures.delete(faceIdx);
+        this.crackCounts[faceIdx] = 0;
+    }
+
+    reset() {
+        this.crackMeshes.forEach((mesh, idx) => this.removeCrackMesh(idx));
+        this.crackCounts = [0, 0, 0, 0, 0, 0];
+    }
+}
+
+// ============ CUSTOM CUBE GEOMETRY BUILDER ============
+function buildCubeGeometry(excludedFaces = new Set()) {
+    const faceData = [
+        { normal: new THREE.Vector3(0, 0, 1),  uv: [[0,1],[1,1],[1,0],[0,0]] }, // Front  (z+)
+        { normal: new THREE.Vector3(0, 0, -1), uv: [[1,1],[0,1],[0,0],[1,0]] }, // Back   (z-)
+        { normal: new THREE.Vector3(1, 0, 0),  uv: [[0,1],[1,1],[1,0],[0,0]] }, // Right  (x+)
+        { normal: new THREE.Vector3(-1, 0, 0), uv: [[1,1],[0,1],[0,0],[1,0]] }, // Left   (x-)
+        { normal: new THREE.Vector3(0, 1, 0),  uv: [[1,0],[1,1],[0,1],[0,0]] }, // Top    (y+)
+        { normal: new THREE.Vector3(0, -1, 0), uv: [[0,0],[0,1],[1,1],[1,0]] }, // Bottom (y-)
+    ];
+
+    const half = 1;
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+    let vertexIndex = 0;
+
+    faceData.forEach((face, faceIdx) => {
+        if (excludedFaces.has(faceIdx)) return;
+
+        const n = face.normal;
+        let corners;
+        if (Math.abs(n.z) === 1) {
+            corners = [
+                new THREE.Vector3(-half, -half, n.z * half),
+                new THREE.Vector3( half, -half, n.z * half),
+                new THREE.Vector3( half,  half, n.z * half),
+                new THREE.Vector3(-half,  half, n.z * half),
+            ];
+        } else if (Math.abs(n.x) === 1) {
+            corners = [
+                new THREE.Vector3(n.x * half, -half, -half),
+                new THREE.Vector3(n.x * half, -half,  half),
+                new THREE.Vector3(n.x * half,  half,  half),
+                new THREE.Vector3(n.x * half,  half, -half),
+            ];
+        } else {
+            corners = [
+                new THREE.Vector3(-half, n.y * half, -half),
+                new THREE.Vector3(-half, n.y * half,  half),
+                new THREE.Vector3( half, n.y * half,  half),
+                new THREE.Vector3( half, n.y * half, -half),
+            ];
+        }
+
+        corners.forEach((corner, i) => {
+            positions.push(corner.x, corner.y, corner.z);
+            normals.push(n.x, n.y, n.z);
+            uvs.push(face.uv[i][0], face.uv[i][1]);
+        });
+
+        indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2);
+        indices.push(vertexIndex, vertexIndex + 2, vertexIndex + 3);
+        vertexIndex += 4;
+    });
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeBoundingSphere();
+    return geometry;
+}
+
+function buildCubeEdgesGeometry(excludedFaces = new Set()) {
+    const half = 1;
+    const allEdges = [
+        [new THREE.Vector3(-half, -half, half), new THREE.Vector3(half, -half, half)],
+        [new THREE.Vector3(half, -half, half), new THREE.Vector3(half, half, half)],
+        [new THREE.Vector3(half, half, half), new THREE.Vector3(-half, half, half)],
+        [new THREE.Vector3(-half, half, half), new THREE.Vector3(-half, -half, half)],
+        [new THREE.Vector3(-half, -half, -half), new THREE.Vector3(half, -half, -half)],
+        [new THREE.Vector3(half, -half, -half), new THREE.Vector3(half, half, -half)],
+        [new THREE.Vector3(half, half, -half), new THREE.Vector3(-half, half, -half)],
+        [new THREE.Vector3(-half, half, -half), new THREE.Vector3(-half, -half, -half)],
+        [new THREE.Vector3(-half, -half, -half), new THREE.Vector3(-half, -half, half)],
+        [new THREE.Vector3(half, -half, -half), new THREE.Vector3(half, -half, half)],
+        [new THREE.Vector3(half, half, -half), new THREE.Vector3(half, half, half)],
+        [new THREE.Vector3(-half, half, -half), new THREE.Vector3(-half, half, half)],
+    ];
+
+    const edgeFaces = [
+        [0, 4], [0, 2], [0, 5], [0, 3],
+        [1, 4], [1, 2], [1, 5], [1, 3],
+        [0, 1], [2, 3], [5, 4], [3, 4],
+    ];
+
+    const positions = [];
+    edgeFaces.forEach((faces, i) => {
+        const hasFace = faces.some(f => !excludedFaces.has(f));
+        if (hasFace) {
+            positions.push(...allEdges[i][0].toArray(), ...allEdges[i][1].toArray());
+        }
+    });
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    return geometry;
+}
+
+// ============ SOLID CUBE WITH DESTRUCTIBLE FACES ============
+class SolidCube {
+    constructor(scene) {
+        this.scene = scene;
+        this.cube = null;
+        this.wireframe = null;
+        this.crackMeshes = new Map(); // faceIdx -> crack mesh
+        this.destroyedFaces = new Set();
+        this.faceClickCounts = [0, 0, 0, 0, 0, 0];
+        this.clicksPerFaceToDestroy = 8;
+        this.perfectClickWindow = 0.18;
+        this.faceNormals = [
+            new THREE.Vector3(0, 0, 1),   // Front
+            new THREE.Vector3(0, 0, -1),  // Back
+            new THREE.Vector3(1, 0, 0),   // Right
+            new THREE.Vector3(-1, 0, 0),  // Left
+            new THREE.Vector3(0, 1, 0),   // Top
+            new THREE.Vector3(0, -1, 0),  // Bottom
         ];
+        this.crackSystem = new CrackSystem();
+        
+        this.createSolidCube();
+    }
 
-        faceData.forEach((data, i) => {
-            const geometry = new THREE.PlaneGeometry(size, size, 10, 10);
-            const material = new THREE.MeshStandardMaterial({
-                color: 0x111111,
-                roughness: 0.4,
-                metalness: 0.1,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 1
-            });
-            const face = new THREE.Mesh(geometry, material);
-            face.position.set(...data.pos);
-            face.rotation.set(...data.rot);
-            face.userData = {
-                originalPos: new THREE.Vector3(...data.pos),
-                originalRot: new THREE.Euler(...data.rot),
-                normal: new THREE.Vector3(...data.normal),
-                index: i,
-                delay: i * 0.1
-            };
-            this.scene.add(face);
-            this.faces.push(face);
+    createSolidCube() {
+        const geometry = buildCubeGeometry(this.destroyedFaces);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            roughness: 0.3,
+            metalness: 0.15,
+        });
+        this.cube = new THREE.Mesh(geometry, material);
+        this.scene.add(this.cube);
 
-            // Add edges for each face
-            const edges = new THREE.EdgesGeometry(geometry);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 });
-            const wire = new THREE.LineSegments(edges, lineMat);
-            wire.position.set(...data.pos);
-            wire.rotation.set(...data.rot);
-            face.add(wire);
-            face.userData.wireframe = wire;
+        // Edge lines
+        const edgesGeometry = buildCubeEdgesGeometry(this.destroyedFaces);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1, transparent: true, opacity: 0.3 });
+        this.wireframe = new THREE.LineSegments(edgesGeometry, lineMat);
+        this.cube.add(this.wireframe);
+
+        // Add crack meshes for non-destroyed faces
+        this.updateCrackMeshes();
+    }
+
+    updateCrackMeshes() {
+        // Remove crack meshes for destroyed faces
+        this.crackMeshes.forEach((mesh, faceIdx) => {
+            if (this.destroyedFaces.has(faceIdx)) {
+                this.scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.map?.dispose();
+                mesh.material.dispose();
+                this.crackMeshes.delete(faceIdx);
+                this.crackSystem.removeCrackMesh(faceIdx);
+            }
+        });
+
+        // Add crack meshes for new faces
+        const half = 1;
+        this.faceNormals.forEach((normal, faceIdx) => {
+            if (this.destroyedFaces.has(faceIdx)) return;
+            if (this.crackMeshes.has(faceIdx)) return;
+
+            let faceCenter;
+            if (Math.abs(normal.z) === 1) {
+                faceCenter = new THREE.Vector3(0, 0, normal.z * half);
+            } else if (Math.abs(normal.x) === 1) {
+                faceCenter = new THREE.Vector3(normal.x * half, 0, 0);
+            } else {
+                faceCenter = new THREE.Vector3(0, normal.y * half, 0);
+            }
+
+            const crackMesh = this.crackSystem.createCrackMesh(faceIdx, normal, faceCenter);
+            this.cube.add(crackMesh);
+            this.crackMeshes.set(faceIdx, crackMesh);
         });
     }
 
+    rebuildCube() {
+        // Dispose old geometry
+        if (this.cube) {
+            this.cube.geometry.dispose();
+            if (this.wireframe) {
+                this.wireframe.geometry.dispose();
+                this.cube.remove(this.wireframe);
+            }
+            // Keep crack meshes - they'll be reparented
+            const oldCrackMeshes = new Map(this.crackMeshes);
+            this.crackMeshes.clear();
+            this.scene.remove(this.cube);
+        }
+        this.createSolidCube();
+    }
+
     checkClick(raycaster, camera) {
-        const intersects = raycaster.intersectObjects(this.faces, true);
+        if (this.destroyedFaces.size >= 6) return false;
+        
+        const intersects = raycaster.intersectObject(this.cube, true);
         if (intersects.length > 0) {
-            const face = intersects[0].object;
-            if (face.userData.index !== undefined) {
-                this.handleFaceClick(face);
+            const faceNormal = intersects[0].face.normal.clone();
+            faceNormal.transformDirection(this.cube.matrixWorld);
+            
+            let faceIdx = -1;
+            let maxDot = -1;
+            this.faceNormals.forEach((normal, i) => {
+                if (this.destroyedFaces.has(i)) return;
+                const dot = normal.dot(faceNormal);
+                if (dot > maxDot) {
+                    maxDot = dot;
+                    faceIdx = i;
+                }
+            });
+            
+            if (faceIdx !== -1 && maxDot > 0.9) {
+                this.handleFaceClick(faceIdx, intersects[0].point);
                 return true;
             }
         }
         return false;
     }
 
-    handleFaceClick(face) {
-        const now = performance.now() / 1000;
+    handleFaceClick(faceIdx, hitPoint) {
         const beatProgress = audioEngine.getBeatProgress();
         const isOnBeat = beatProgress < this.perfectClickWindow || beatProgress > (1 - this.perfectClickWindow);
         
         if (isOnBeat) {
-            this.clickCount++;
-            this.triggerFaceExplosion(face);
+            this.faceClickCounts[faceIdx]++;
             
-            // Visual feedback for perfect click
-            this.showClickFeedback(face, true);
+            // Add crack to this face
+            const crackCount = this.crackSystem.addCrack(faceIdx, hitPoint, this.faceNormals[faceIdx], this.cube.matrixWorld);
             
-            if (this.clickCount >= this.requiredClicks) {
-                this.startFullDestruction();
+            // Hit particles
+            this.createHitParticles(hitPoint.clone(), this.faceNormals[faceIdx]);
+            
+            if (this.faceClickCounts[faceIdx] >= this.clicksPerFaceToDestroy) {
+                this.destroyFace(faceIdx, hitPoint);
             }
-        } else {
-            // Missed beat - slight penalty
-            this.showClickFeedback(face, false);
         }
-        this.lastClickTime = now;
+        // If off-beat, do nothing (no feedback, no penalty)
     }
 
-    triggerFaceExplosion(face) {
-        const userData = face.userData;
-        const direction = userData.normal.clone();
-        
-        // Animate face flying off
-        const duration = 1.5;
-        const startPos = face.position.clone();
-        const startRot = face.rotation.clone();
-        const targetPos = startPos.clone().add(direction.multiplyScalar(10));
-        const targetRot = new THREE.Euler(
-            startRot.x + (Math.random() - 0.5) * 10,
-            startRot.y + (Math.random() - 0.5) * 10,
-            startRot.z + (Math.random() - 0.5) * 10
-        );
-        
-        const startTime = performance.now() / 1000;
-        const animateFace = () => {
-            const elapsed = (performance.now() / 1000) - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = this.easeOutCubic(progress);
-            
-            face.position.lerpVectors(startPos, targetPos, eased);
-            face.rotation.x = THREE.MathUtils.lerp(startRot.x, targetRot.x, eased);
-            face.rotation.y = THREE.MathUtils.lerp(startRot.y, targetRot.y, eased);
-            face.rotation.z = THREE.MathUtils.lerp(startRot.z, targetRot.z, eased);
-            
-            // Fade out
-            face.material.opacity = 1 - eased;
-            if (face.userData.wireframe) {
-                face.userData.wireframe.material.opacity = 1 - eased;
-            }
-            
-            if (progress < 1) {
-                requestAnimationFrame(animateFace);
-            } else {
-                this.scene.remove(face);
-                this.faces = this.faces.filter(f => f !== face);
-            }
-        };
-        animateFace();
-        
-        // Particle burst
-        this.createParticles(face.position.clone(), direction);
-    }
-
-    startFullDestruction() {
-        this.isDestroying = true;
-        this.faces.forEach((face, i) => {
-            setTimeout(() => {
-                if (this.scene.children.includes(face)) {
-                    this.triggerFaceExplosion(face);
-                }
-            }, i * 100);
-        });
-        
-        // Reset after destruction
-        setTimeout(() => {
-            this.resetCube();
-        }, 3000);
-    }
-
-    resetCube() {
-        this.faces.forEach(face => this.scene.remove(face));
-        this.faces = [];
-        this.clickCount = 0;
-        this.isDestroying = false;
-        this.createCube();
-    }
-
-    createParticles(position, direction) {
-        const particleCount = 20;
+    createHitParticles(position, normal) {
+        const particleCount = 8;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const velocities = [];
         const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
         
         for (let i = 0; i < particleCount; i++) {
             positions[i * 3] = position.x;
@@ -304,22 +551,202 @@ class DestructibleCube {
             positions[i * 3 + 2] = position.z;
             
             const spread = new THREE.Vector3(
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2
-            ).add(direction.clone().multiplyScalar(2)).normalize().multiplyScalar(0.1 + Math.random() * 0.2);
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5
+            ).add(normal.clone().multiplyScalar(1)).normalize().multiplyScalar(0.05 + Math.random() * 0.05);
             velocities.push(spread);
             
-            colors[i * 3] = 0.1;
-            colors[i * 3 + 1] = 0.1;
-            colors[i * 3 + 2] = 0.1;
+            const shade = 0.3 + Math.random() * 0.3;
+            colors[i * 3] = shade;
+            colors[i * 3 + 1] = shade;
+            colors[i * 3 + 2] = shade;
+            
+            sizes[i] = 0.02 + Math.random() * 0.02;
         }
         
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         
         const material = new THREE.PointsMaterial({
-            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 1,
+            sizeAttenuation: true
+        });
+        
+        const particles = new THREE.Points(geometry, material);
+        this.scene.add(particles);
+        
+        const startTime = performance.now() / 1000;
+        const duration = 0.5;
+        
+        const animateParticles = () => {
+            const elapsed = (performance.now() / 1000) - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            const posAttr = geometry.getAttribute('position');
+            const sizeAttr = geometry.getAttribute('size');
+            for (let i = 0; i < particleCount; i++) {
+                posAttr.setXYZ(i,
+                    posAttr.getX(i) + velocities[i].x,
+                    posAttr.getY(i) + velocities[i].y,
+                    posAttr.getZ(i) + velocities[i].z
+                );
+                velocities[i].y -= 0.005;
+                velocities[i].multiplyScalar(0.98);
+                sizeAttr.setX(i, sizeAttr.getX(i) * 0.95);
+            }
+            posAttr.needsUpdate = true;
+            sizeAttr.needsUpdate = true;
+            material.opacity = 1 - progress;
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateParticles);
+            } else {
+                this.scene.remove(particles);
+                geometry.dispose();
+                material.dispose();
+            }
+        };
+        animateParticles();
+    }
+
+    destroyFace(faceIdx, hitPoint) {
+        this.destroyedFaces.add(faceIdx);
+        
+        // Remove crack mesh for this face
+        const crackMesh = this.crackMeshes.get(faceIdx);
+        if (crackMesh) {
+            this.cube.remove(crackMesh);
+            this.crackMeshes.delete(faceIdx);
+            this.crackSystem.removeCrackMesh(faceIdx);
+        }
+        
+        // Create exploding face piece
+        this.createExplodingFace(faceIdx, hitPoint);
+        
+        // Rebuild cube without this face
+        this.rebuildCube();
+        
+        if (this.destroyedFaces.size >= 6) {
+            setTimeout(() => this.resetCube(), 2000);
+        }
+    }
+
+    createExplodingFace(faceIdx, hitPoint) {
+        const size = 2;
+        const half = size / 2;
+        const normal = this.faceNormals[faceIdx];
+        const faceCenter = normal.clone().multiplyScalar(half);
+        
+        const geometry = new THREE.PlaneGeometry(size, size, 5, 5);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            roughness: 0.3,
+            metalness: 0.15,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 1
+        });
+        const faceMesh = new THREE.Mesh(geometry, material);
+        
+        faceMesh.position.copy(this.cube.position).add(faceCenter);
+        faceMesh.lookAt(faceMesh.position.clone().add(normal));
+        faceMesh.rotateY(Math.PI);
+        
+        const edges = new THREE.EdgesGeometry(geometry);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1, transparent: true, opacity: 0.5 });
+        const wire = new THREE.LineSegments(edges, lineMat);
+        faceMesh.add(wire);
+        faceMesh.userData.wireframe = wire;
+        
+        this.scene.add(faceMesh);
+        this.animateFaceExplosion(faceMesh, normal, hitPoint);
+    }
+
+    animateFaceExplosion(faceMesh, normal, hitPoint) {
+        const duration = 2.0;
+        const startPos = faceMesh.position.clone();
+        const startRot = faceMesh.rotation.clone();
+        
+        const toHit = faceMesh.position.clone().sub(hitPoint).normalize();
+        const explodeDir = normal.clone().add(toHit.multiplyScalar(0.5)).normalize();
+        const targetPos = startPos.clone().add(explodeDir.multiplyScalar(15));
+        const targetRot = new THREE.Euler(
+            startRot.x + (Math.random() - 0.5) * 8,
+            startRot.y + (Math.random() - 0.5) * 8,
+            startRot.z + (Math.random() - 0.5) * 8
+        );
+        
+        const startTime = performance.now() / 1000;
+        
+        const animateFace = () => {
+            const elapsed = (performance.now() / 1000) - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = this.easeOutCubic(progress);
+            
+            faceMesh.position.lerpVectors(startPos, targetPos, eased);
+            faceMesh.rotation.x = THREE.MathUtils.lerp(startRot.x, targetRot.x, eased);
+            faceMesh.rotation.y = THREE.MathUtils.lerp(startRot.y, targetRot.y, eased);
+            faceMesh.rotation.z = THREE.MathUtils.lerp(startRot.z, targetRot.z, eased);
+            
+            faceMesh.material.opacity = 1 - eased;
+            if (faceMesh.userData.wireframe) {
+                faceMesh.userData.wireframe.material.opacity = (1 - eased) * 0.5;
+            }
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateFace);
+            } else {
+                this.scene.remove(faceMesh);
+                faceMesh.geometry.dispose();
+                faceMesh.material.dispose();
+                if (faceMesh.userData.wireframe) {
+                    faceMesh.userData.wireframe.geometry.dispose();
+                    faceMesh.userData.wireframe.material.dispose();
+                }
+            }
+        };
+        animateFace();
+        
+        this.createParticles(hitPoint.clone(), explodeDir);
+    }
+
+    createParticles(position, direction) {
+        const particleCount = 30;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = position.x;
+            positions[i * 3 + 1] = position.y;
+            positions[i * 3 + 2] = position.z;
+            
+            const spread = new THREE.Vector3(
+                (Math.random() - 0.5) * 1.5,
+                (Math.random() - 0.5) * 1.5,
+                (Math.random() - 0.5) * 1.5
+            ).add(direction.clone().multiplyScalar(2)).normalize().multiplyScalar(0.08 + Math.random() * 0.15);
+            velocities.push(spread);
+            
+            const shade = 0.05 + Math.random() * 0.1;
+            colors[i * 3] = shade;
+            colors[i * 3 + 1] = shade;
+            colors[i * 3 + 2] = shade;
+            
+            sizes[i] = 0.03 + Math.random() * 0.04;
+        }
+        
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        const material = new THREE.PointsMaterial({
             vertexColors: true,
             transparent: true,
             opacity: 1,
@@ -337,17 +764,20 @@ class DestructibleCube {
             const progress = Math.min(elapsed / duration, 1);
             
             const posAttr = geometry.getAttribute('position');
+            const sizeAttr = geometry.getAttribute('size');
             for (let i = 0; i < particleCount; i++) {
                 posAttr.setXYZ(i,
                     posAttr.getX(i) + velocities[i].x,
                     posAttr.getY(i) + velocities[i].y,
                     posAttr.getZ(i) + velocities[i].z
                 );
-                velocities[i].y -= 0.005; // gravity
+                velocities[i].y -= 0.003;
+                velocities[i].multiplyScalar(0.99);
+                sizeAttr.setX(i, sizeAttr.getX(i) * 0.99);
             }
             posAttr.needsUpdate = true;
+            sizeAttr.needsUpdate = true;
             material.opacity = 1 - progress;
-            material.size = 0.05 * (1 - progress * 0.5);
             
             if (progress < 1) {
                 requestAnimationFrame(animateParticles);
@@ -360,16 +790,21 @@ class DestructibleCube {
         animateParticles();
     }
 
-    showClickFeedback(face, success) {
-        const originalColor = face.material.color.clone();
-        const flashColor = success ? new THREE.Color(0x00ff00) : new THREE.Color(0xff0000);
-        face.material.color.set(flashColor);
-        if (face.userData.wireframe) face.userData.wireframe.material.color.set(flashColor);
-        
-        setTimeout(() => {
-            face.material.color.set(originalColor);
-            if (face.userData.wireframe) face.userData.wireframe.material.color.set(0x000000);
-        }, 100);
+    resetCube() {
+        if (this.cube) {
+            this.cube.geometry.dispose();
+            this.cube.material.dispose();
+            if (this.wireframe) {
+                this.wireframe.geometry.dispose();
+                this.wireframe.material.dispose();
+            }
+            this.scene.remove(this.cube);
+        }
+        this.crackSystem.reset();
+        this.crackMeshes.clear();
+        this.destroyedFaces.clear();
+        this.faceClickCounts = [0, 0, 0, 0, 0, 0];
+        this.createSolidCube();
     }
 
     easeOutCubic(t) {
@@ -377,91 +812,78 @@ class DestructibleCube {
     }
 
     update() {
-        // Subtle breathing animation when not destroying
-        if (!this.isDestroying) {
-            const time = performance.now() / 1000;
-            this.faces.forEach((face, i) => {
-                const offset = Math.sin(time * 0.5 + i) * 0.02;
-                face.position.addScaledVector(face.userData.normal, offset - face.userData.lastOffset || 0);
-                face.userData.lastOffset = offset;
-            });
+        const time = performance.now() / 1000;
+        if (this.cube && this.destroyedFaces.size < 6) {
+            const scale = 1 + Math.sin(time * 0.8) * 0.01;
+            this.cube.scale.setScalar(scale);
         }
     }
 }
 
 // ============ MAIN GAME ============
-// 1. Сцена и белый фон
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
-// 2. Камера
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 4;
 
-// 3. Рендерер
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.getElementById('app').appendChild(renderer.domElement);
 
-// 4. Управление мышкой (вращение)
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.minDistance = 3;
 controls.maxDistance = 10;
+controls.enablePan = false;
 
-// 5. Свет
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-dirLight.position.set(5, 5, 5);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 7);
 scene.add(dirLight);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xcccccc, 0.4);
+const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xe0e0e0, 0.5);
 scene.add(hemisphereLight);
 
-// 6. Audio Engine
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+rimLight.position.set(-5, -5, -5);
+scene.add(rimLight);
+
 const audioEngine = new AudioEngine();
+const cube = new SolidCube(scene);
 
-// 7. Destructible Cube
-const cube = new DestructibleCube(scene);
-
-// 8. Raycaster for interaction
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-// 9. UI Elements
-const uiContainer = document.createElement('div');
-uiContainer.style.cssText = `
+const beatIndicator = document.createElement('div');
+beatIndicator.style.cssText = `
     position: fixed;
-    top: 20px;
+    bottom: 30px;
     left: 50%;
     transform: translateX(-50%);
-    color: #333;
-    font-family: monospace;
-    text-align: center;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #333;
+    opacity: 0.4;
     pointer-events: none;
     z-index: 100;
+    transition: transform 0.05s, opacity 0.05s, background 0.05s;
 `;
-uiContainer.innerHTML = `
-    <div id="beatIndicator" style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">●</div>
-    <div id="clickCounter" style="font-size: 14px;">Clicks: 0 / 8</div>
-    <div id="instruction" style="font-size: 12px; opacity: 0.7; margin-top: 10px;">Click cube ON THE BEAT to destroy it</div>
-`;
-document.body.appendChild(uiContainer);
+document.body.appendChild(beatIndicator);
 
-const beatIndicator = document.getElementById('beatIndicator');
-const clickCounter = document.getElementById('clickCounter');
-
-// 10. Event Listeners
 function onMouseMove(event) {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 }
 
 function onClick(event) {
+    if (event.target !== renderer.domElement) return;
+    
     audioEngine.resume();
     if (!audioEngine.isPlaying) audioEngine.start();
     
@@ -472,7 +894,6 @@ function onClick(event) {
 window.addEventListener('mousemove', onMouseMove);
 window.addEventListener('click', onClick);
 
-// Touch support
 window.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
         const touch = e.touches[0];
@@ -485,50 +906,45 @@ window.addEventListener('touchstart', (e) => {
     }
 }, { passive: true });
 
-// 11. Window Resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 12. Beat Visualization
 audioEngine.onBeat((time) => {
-    beatIndicator.style.transform = 'scale(1.5)';
-    beatIndicator.style.color = '#000';
+    beatIndicator.style.transform = 'translateX(-50%) scale(2)';
+    beatIndicator.style.opacity = '1';
+    beatIndicator.style.background = '#000';
     setTimeout(() => {
-        beatIndicator.style.transform = 'scale(1)';
-        beatIndicator.style.color = '#333';
-    }, 100);
+        beatIndicator.style.transform = 'translateX(-50%) scale(1)';
+        beatIndicator.style.opacity = '0.4';
+        beatIndicator.style.background = '#333';
+    }, 80);
 });
 
-// 13. Animation Loop
 function animate() {
     requestAnimationFrame(animate);
     
-    // Update cube
     cube.update();
     
-    // Update UI
-    clickCounter.textContent = `Clicks: ${cube.clickCount} / ${cube.requiredClicks}`;
+    if (audioEngine.isPlaying) {
+        const progress = audioEngine.getBeatProgress();
+        const pulseScale = 1 + Math.sin(progress * Math.PI * 2) * 0.4;
+        const pulseOpacity = 0.4 + 0.3 * Math.sin(progress * Math.PI * 2);
+        beatIndicator.style.transform = `translateX(-50%) scale(${pulseScale})`;
+        beatIndicator.style.opacity = pulseOpacity;
+    }
     
-    // Beat indicator pulse
-    const progress = audioEngine.getBeatProgress();
-    const pulseScale = 1 + Math.sin(progress * Math.PI * 2) * 0.3;
-    beatIndicator.style.transform = `scale(${pulseScale})`;
-    beatIndicator.style.opacity = 0.5 + 0.5 * Math.sin(progress * Math.PI * 2);
-    
-    // Auto-rotation (slower)
-    cube.faces.forEach(face => {
-        face.rotation.x += 0.0005;
-        face.rotation.y += 0.001;
-    });
+    if (cube.cube) {
+        cube.cube.rotation.x += 0.0003;
+        cube.cube.rotation.y += 0.0005;
+    }
     
     controls.update();
     renderer.render(scene, camera);
 }
 
-// Start audio on first interaction
 document.body.addEventListener('click', () => {
     audioEngine.resume();
     if (!audioEngine.isPlaying) audioEngine.start();
