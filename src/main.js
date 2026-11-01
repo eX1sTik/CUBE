@@ -341,33 +341,43 @@ function animateFaceShatter(face) {
     
     // Animate pieces flying off
     const startTime = performance.now();
-    const duration = 600;
+    const duration = 1200; // Longer duration for more dramatic effect
     
     function animatePieces() {
         const elapsed = performance.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        const eased = Math.pow(progress, 2); // easeInQuad
+        // Ease out cubic for dramatic slow-down
+        const eased = 1 - Math.pow(1 - progress, 3);
         
         pieces.forEach((piece, i) => {
-            const delay = i * 0.02;
+            const delay = i * 0.008; // Staggered start
             const pieceProgress = Math.max(0, (progress - delay) / (1 - delay));
             if (pieceProgress <= 0) return;
             
-            const pieceEased = Math.pow(pieceProgress, 2);
+            const pieceEased = 1 - Math.pow(1 - pieceProgress, 3);
             
-            // Fly outward and rotate
-            piece.position.x += piece.userData.velocity.x * pieceEased * 0.5;
-            piece.position.y += piece.userData.velocity.y * pieceEased * 0.5;
-            piece.position.z += piece.userData.velocity.z * pieceEased * 0.5;
+            // Fly outward with gravity and air resistance
+            piece.position.x += piece.userData.velocity.x * pieceEased;
+            piece.position.y += piece.userData.velocity.y * pieceEased;
+            piece.position.z += piece.userData.velocity.z * pieceEased;
             
-            piece.rotation.x += piece.userData.angularVelocity.x * pieceEased;
-            piece.rotation.y += piece.userData.angularVelocity.y * pieceEased;
-            piece.rotation.z += piece.userData.angularVelocity.z * pieceEased;
+            // Apply gravity
+            piece.userData.velocity.y -= 0.0008 * pieceEased;
             
-            // Fade out
-            piece.material.opacity = 1 - pieceEased;
-            piece.material.transparent = true;
-            piece.material.needsUpdate = true;
+            // Apply air resistance
+            piece.userData.velocity.multiplyScalar(0.995);
+            
+            // Rotate chaotically
+            piece.rotation.x += piece.userData.angularVelocity.x;
+            piece.rotation.y += piece.userData.angularVelocity.y;
+            piece.rotation.z += piece.userData.angularVelocity.z;
+            
+            // Fade out near the end
+            if (pieceProgress > 0.7) {
+                piece.material.opacity = 1 - (pieceProgress - 0.7) / 0.3;
+                piece.material.transparent = true;
+                piece.material.needsUpdate = true;
+            }
         });
         
         if (progress < 1) {
@@ -393,7 +403,8 @@ function animateFaceShatter(face) {
 
 function createShatterPieces(face, crackTexture) {
     const pieces = [];
-    const pieceCount = 12 + Math.floor(Math.random() * 8);
+    // More pieces for more chaos
+    const pieceCount = 25 + Math.floor(Math.random() * 15); // 25-40 pieces
     
     // Get face world position and rotation
     const worldPos = new THREE.Vector3();
@@ -401,10 +412,12 @@ function createShatterPieces(face, crackTexture) {
     face.getWorldPosition(worldPos);
     face.getWorldQuaternion(worldQuat);
     
+    // Get face normal for outward explosion
+    const faceNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat);
+    
     for (let i = 0; i < pieceCount; i++) {
-        // Create irregular piece geometry (slightly randomized box)
-        const size = 0.15 + Math.random() * 0.15;
-        const geo = new THREE.BoxGeometry(size, size, 0.02);
+        // Create varied shard geometries - not just boxes
+        const geo = createShardGeometry();
         
         // Shatter piece material: visible cracks + alpha transparency for crack holes
         const mat = new THREE.MeshStandardMaterial({
@@ -412,8 +425,8 @@ function createShatterPieces(face, crackTexture) {
             roughness: 0.35,
             metalness: 0.0,
             side: THREE.DoubleSide,
-            map: crackTexture.getVisibleTexture(),      // Visible gray cracks
-            alphaMap: crackTexture.getAlphaTexture(),   // Transparent crack holes
+            map: crackTexture.getVisibleTexture(),
+            alphaMap: crackTexture.getAlphaTexture(),
             transparent: true,
             alphaTest: 0.01,
         });
@@ -421,37 +434,136 @@ function createShatterPieces(face, crackTexture) {
         
         const piece = new THREE.Mesh(geo, mat);
         
-        // Position near face center with small offset
+        // Position near face center with random offset
         const offset = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.8,
-            (Math.random() - 0.5) * 0.8,
-            0
+            (Math.random() - 0.5) * 1.5,
+            (Math.random() - 0.5) * 1.5,
+            (Math.random() - 0.5) * 0.2
         );
         offset.applyQuaternion(worldQuat);
         piece.position.copy(worldPos).add(offset);
-        piece.quaternion.copy(worldQuat);
         
-        // Random velocity outward
-        const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.02,
-            (Math.random() - 0.5) * 0.02,
-            (Math.random() - 0.5) * 0.01 - 0.005 // Slight backward
+        // Random initial rotation
+        piece.rotation.set(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
         );
-        velocity.applyQuaternion(worldQuat);
         
-        // Random angular velocity
+        // CHAOTIC velocity - explode in ALL directions
+        // Base outward velocity from face center
+        const outwardDir = new THREE.Vector3(
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2
+        ).normalize();
+        
+        // Strong outward component along face normal + random chaos
+        const explosionForce = 0.08 + Math.random() * 0.12; // 0.08-0.20
+        const velocity = outwardDir.multiplyScalar(explosionForce);
+        
+        // Add strong component along face normal (forward/backward)
+        velocity.addScaledVector(faceNormal, (Math.random() - 0.5) * 0.15);
+        
+        // Add some initial spin
         const angularVelocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.05,
-            (Math.random() - 0.5) * 0.05,
-            (Math.random() - 0.5) * 0.05
+            (Math.random() - 0.5) * 0.15,
+            (Math.random() - 0.5) * 0.15,
+            (Math.random() - 0.5) * 0.15
         );
         
-        piece.userData = { velocity, angularVelocity };
+        // Add wobble/tumble
+        piece.userData = { 
+            velocity, 
+            angularVelocity,
+            // Add some randomness to gravity effect
+            gravityMultiplier: 0.5 + Math.random() * 1.5,
+            // Add spin decay
+            spinDecay: 0.98 + Math.random() * 0.015
+        };
+        
         scene.add(piece);
         pieces.push(piece);
     }
     
     return pieces;
+}
+
+function createShardGeometry() {
+    // Create varied, irregular shard shapes
+    const shapeType = Math.random();
+    
+    if (shapeType < 0.3) {
+        // Thin irregular plate (most glass-like)
+        const width = 0.08 + Math.random() * 0.25;
+        const height = 0.08 + Math.random() * 0.25;
+        const depth = 0.01 + Math.random() * 0.02;
+        const geo = new THREE.BoxGeometry(width, height, depth);
+        // Add slight vertex distortion
+        distortGeometry(geo, 0.15);
+        return geo;
+    } else if (shapeType < 0.55) {
+        // Triangular shard
+        const size = 0.1 + Math.random() * 0.2;
+        const geo = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+            // Front face
+            0, size * 0.5, 0,
+            -size * 0.5, -size * 0.5, 0,
+            size * 0.5, -size * 0.5, 0,
+            // Back face
+            0, size * 0.5, -0.02,
+            size * 0.5, -size * 0.5, -0.02,
+            -size * 0.5, -size * 0.5, -0.02,
+        ]);
+        const indices = [
+            0, 1, 2,    // front
+            3, 4, 5,    // back
+            0, 2, 4,    // right
+            4, 1, 0,    // left (corrected winding)
+            1, 4, 5,    // bottom
+            5, 2, 1,    // bottom back
+            2, 5, 3,    // left side
+            3, 0, 2,    // top
+        ];
+        geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        distortGeometry(geo, 0.2);
+        return geo;
+    } else if (shapeType < 0.75) {
+        // Long thin shard (needle-like)
+        const length = 0.15 + Math.random() * 0.3;
+        const width = 0.03 + Math.random() * 0.04;
+        const depth = 0.01 + Math.random() * 0.015;
+        const geo = new THREE.BoxGeometry(width, length, depth);
+        distortGeometry(geo, 0.25);
+        return geo;
+    } else {
+        // Chunky irregular piece
+        const size = 0.12 + Math.random() * 0.18;
+        const geo = new THREE.BoxGeometry(size, size, 0.02 + Math.random() * 0.03);
+        distortGeometry(geo, 0.3);
+        return geo;
+    }
+}
+
+function distortGeometry(geometry, amount) {
+    const position = geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i);
+        const y = position.getY(i);
+        const z = position.getZ(i);
+        
+        // Add random distortion
+        position.setXYZ(i,
+            x + (Math.random() - 0.5) * amount * Math.abs(x) * 0.5,
+            y + (Math.random() - 0.5) * amount * Math.abs(y) * 0.5,
+            z + (Math.random() - 0.5) * amount * 0.5
+        );
+    }
+    position.needsUpdate = true;
+    geometry.computeVertexNormals();
 }
 
 window.addEventListener('click', onClick);
