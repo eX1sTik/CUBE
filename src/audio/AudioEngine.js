@@ -1,11 +1,8 @@
 export class AudioEngine {
     constructor() {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        this.masterGain = this.ctx.createGain();
-        this.masterGain.connect(this.ctx.destination);
-        this.masterGain.gain.value = 0.15;
-        this.isPlaying = false;
-        this.startTime = 0;
+        // Don't create AudioContext yet - wait for user gesture
+        this.ctx = null;
+        this.masterGain = null;
         this.bpm = 70;
         this.beatInterval = 60 / this.bpm;
         
@@ -17,13 +14,27 @@ export class AudioEngine {
         this.scheduledAheadTime = 0.1; // Schedule 100ms ahead
         this.lookahead = 25; // ms
         this.scheduleIntervalId = null;
+        this.isPlaying = false;
+        this.startTime = 0;
+    }
+
+    ensureAudioContext() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.connect(this.ctx.destination);
+            this.masterGain.gain.value = 0.15;
+        }
+        return this.ctx;
     }
 
     resume() {
+        this.ensureAudioContext();
         if (this.ctx.state === 'suspended') this.ctx.resume();
     }
 
     start() {
+        this.ensureAudioContext();
         if (this.isPlaying) return;
         this.isPlaying = true;
         this.startTime = this.ctx.currentTime;
@@ -198,5 +209,8 @@ export function initAudio() {
 }
 
 export function getAudioEngine() {
+    if (!audioEngineInstance) {
+        audioEngineInstance = new AudioEngine();
+    }
     return audioEngineInstance;
 }

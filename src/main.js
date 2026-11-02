@@ -15,7 +15,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap; // Fixed: PCFSoftShadowMap removed in newer Three.js
 document.body.appendChild(renderer.domElement);
 
 // Controls
@@ -29,8 +29,16 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.3;
 controls.target.set(0, 0, 0);
 
-// Initialize audio and metronome
-initAudio();
+// Initialize audio on first user gesture
+function initAudioOnGesture() {
+    initAudio();
+    window.removeEventListener('click', initAudioOnGesture);
+    window.removeEventListener('keydown', initAudioOnGesture);
+}
+window.addEventListener('click', initAudioOnGesture, { once: true });
+window.addEventListener('keydown', initAudioOnGesture, { once: true });
+
+// Create audio engine and metronome
 const audioEngine = getAudioEngine();
 const metronome = createMetronome(audioEngine);
 
