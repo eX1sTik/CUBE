@@ -16,11 +16,11 @@ export function createWell(scene, options = {}) {
     wellGroup.position.copy(position);
     wellGroup.rotation.copy(rotation);
 
-    // Materials
+    // Materials - BRIGHTER for visibility
     const stoneMaterial = new THREE.MeshStandardMaterial({
-        color: 0x3a3a3a,
-        roughness: 0.9,
-        metalness: 0.0,
+        color: 0x555555,  // Brighter gray
+        roughness: 0.8,
+        metalness: 0.1,
         side: THREE.DoubleSide,
     });
 
@@ -30,17 +30,17 @@ export function createWell(scene, options = {}) {
     });
 
     const mossMaterial = new THREE.MeshStandardMaterial({
-        color: 0x1a3a1a,
+        color: 0x2a5a2a,  // Brighter moss
         roughness: 1.0,
         metalness: 0.0,
     });
 
     const waterMaterial = new THREE.MeshStandardMaterial({
-        color: 0x000814,
+        color: 0x001122,  // Brighter water
         roughness: 0.1,
         metalness: 0.9,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.8,
         side: THREE.DoubleSide,
     });
 
@@ -50,11 +50,13 @@ export function createWell(scene, options = {}) {
     const wall = new THREE.Mesh(wallGeometry, stoneMaterial);
     wall.castShadow = true;
     wall.receiveShadow = true;
+    wall.name = 'well-wall';
     wellGroup.add(wall);
 
     // --- Well Inner Surface (Darkness) ---
     const innerGeometry = new THREE.CylinderGeometry(radius, radius, depth, segments, 1, true);
     const innerSurface = new THREE.Mesh(innerGeometry, darkMaterial);
+    innerSurface.name = 'well-inner';
     wellGroup.add(innerSurface);
 
     // --- Top Rim ---
@@ -63,16 +65,19 @@ export function createWell(scene, options = {}) {
     rim.position.y = depth / 2;
     rim.castShadow = true;
     rim.receiveShadow = true;
+    rim.name = 'well-rim';
     wellGroup.add(rim);
 
     // --- Inner Rim (Lip) ---
     const innerRimGeometry = new THREE.CylinderGeometry(radius, radius + 0.1, 0.2, segments);
     const innerRim = new THREE.Mesh(innerRimGeometry, stoneMaterial);
     innerRim.position.y = depth / 2 - 0.1;
+    innerRim.name = 'well-inner-rim';
     wellGroup.add(innerRim);
 
     // --- Moss Patches on Wall ---
     const mossPatches = new THREE.Group();
+    mossPatches.name = 'well-moss';
     for (let i = 0; i < 24; i++) {
         const angle = (i / 24) * Math.PI * 2 + Math.random() * 0.2;
         const height = -depth / 2 + 1 + Math.random() * (depth - 2);
@@ -96,23 +101,24 @@ export function createWell(scene, options = {}) {
     const water = new THREE.Mesh(waterGeometry, waterMaterial);
     water.rotation.x = -Math.PI / 2;
     water.position.y = -depth / 2 + 0.1;
+    water.name = 'well-water';
     wellGroup.add(water);
 
     // --- Water Ripple Animation ---
     let waterTime = 0;
-    const originalWaterScale = water.scale.clone();
 
     // --- Fog Volume Inside Well ---
     const fogGeometry = new THREE.CylinderGeometry(radius * 0.95, radius * 0.95, depth - 1, segments, 1, true);
     const fogMaterial = new THREE.MeshBasicMaterial({
         color: 0x000000,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.4,
         side: THREE.BackSide,
         depthWrite: false,
     });
     const fogVolume = new THREE.Mesh(fogGeometry, fogMaterial);
     fogVolume.position.y = 0;
+    fogVolume.name = 'well-fog';
     wellGroup.add(fogVolume);
 
     // --- Particle System (Dust/Mist) ---
@@ -142,20 +148,29 @@ export function createWell(scene, options = {}) {
         color: 0xffffff,
         size: 0.05,
         transparent: true,
-        opacity: 0.4,
+        opacity: 0.5,
         depthWrite: false,
         vertexColors: false,
         sizeAttenuation: true,
     });
 
     const particles = new THREE.Points(particleGeometry, particleMaterial);
+    particles.name = 'well-particles';
     wellGroup.add(particles);
 
     // --- Light at Bottom (Subtle Glow) ---
-    const bottomLight = new THREE.PointLight(0x001133, 0.5, radius * 3);
+    const bottomLight = new THREE.PointLight(0x002244, 1.0, radius * 4);  // Brighter
     bottomLight.position.set(0, -depth / 2 + 0.5, 0);
     bottomLight.castShadow = false;
     wellGroup.add(bottomLight);
+
+    // --- DEBUG: Bright marker at well top center ---
+    const debugMarkerGeo = new THREE.SphereGeometry(0.3, 8, 8);
+    const debugMarkerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
+    const debugMarker = new THREE.Mesh(debugMarkerGeo, debugMarkerMat);
+    debugMarker.position.set(0, depth / 2 + 0.5, 0);
+    debugMarker.name = 'well-debug-marker';
+    wellGroup.add(debugMarker);
 
     // --- Animation ---
     function update(deltaTime) {
@@ -164,7 +179,7 @@ export function createWell(scene, options = {}) {
         // Water ripple
         const ripple = Math.sin(waterTime * 2) * 0.01 + 1;
         water.scale.setScalar(ripple);
-        water.material.opacity = 0.5 + Math.sin(waterTime * 3) * 0.1;
+        water.material.opacity = 0.6 + Math.sin(waterTime * 3) * 0.15;
 
         // Particle floating
         const positions = particleGeometry.attributes.position.array;
@@ -178,10 +193,14 @@ export function createWell(scene, options = {}) {
         particleGeometry.attributes.position.needsUpdate = true;
 
         // Fog pulse
-        fogMaterial.opacity = 0.2 + Math.sin(waterTime * 0.5) * 0.1;
+        fogMaterial.opacity = 0.3 + Math.sin(waterTime * 0.5) * 0.1;
 
         // Bottom light pulse
-        bottomLight.intensity = 0.3 + Math.sin(waterTime * 1.7) * 0.2;
+        bottomLight.intensity = 0.5 + Math.sin(waterTime * 1.7) * 0.3;
+
+        // Debug marker pulse
+        debugMarker.scale.setScalar(1 + Math.sin(waterTime * 4) * 0.2);
+        debugMarker.material.opacity = 0.5 + Math.sin(waterTime * 4) * 0.3;
     }
 
     // --- Interaction: Look Into Well ---
@@ -205,7 +224,12 @@ export function createWell(scene, options = {}) {
 
     // Add to scene
     scene.add(wellGroup);
-    console.log('Well added to scene, wellGroup:', wellGroup);
+    
+    // Log world position of well top
+    const topWorldPos = new THREE.Vector3(0, depth / 2, 0).applyMatrix4(wellGroup.matrixWorld);
+    console.log('Well added to scene. Well top world position:', topWorldPos);
+    console.log('Well group:', wellGroup);
+    console.log('Well group children:', wellGroup.children.map(c => c.name));
 
     return {
         group: wellGroup,
@@ -218,6 +242,7 @@ export function createWell(scene, options = {}) {
         particles,
         bottomLight,
         fogVolume,
+        debugMarker,
         
         // Cleanup
         dispose: () => {
@@ -229,6 +254,8 @@ export function createWell(scene, options = {}) {
             waterGeometry.dispose();
             fogGeometry.dispose();
             particleGeometry.dispose();
+            debugMarkerGeo.dispose();
+            debugMarkerMat.dispose();
             stoneMaterial.dispose();
             darkMaterial.dispose();
             mossMaterial.dispose();

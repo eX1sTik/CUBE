@@ -51,10 +51,11 @@ let well = null;
 
 // Setup cube interaction with callback for when all faces destroyed
 const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem, () => {
-    console.log('All faces destroyed - creating well...');
+    console.log('=== ALL FACES DESTROYED - CREATING WELL ===');
     
     // All faces destroyed - create well at cube position
     const cubePosition = cubeGroup.position.clone();
+    console.log('Cube position:', cubePosition);
     
     // Remove cube from scene
     scene.remove(cubeGroup);
@@ -90,6 +91,8 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
     });
     
     console.log('Well created:', well);
+    console.log('Well group position:', well.group.position);
+    console.log('Well group world position:', well.getWorldPosition());
     
     // Stop cube auto-rotation
     controls.autoRotate = false;
@@ -103,41 +106,41 @@ scene.add(metronome.getCircleGroup());
 metronome.start();
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);  // Brighter
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);  // Brighter
 directionalLight.position.set(5, 10, 7);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 directionalLight.shadow.camera.near = 0.5;
-directionalLight.shadow.camera.far = 20;
-directionalLight.shadow.camera.left = -5;
-directionalLight.shadow.camera.right = 5;
-directionalLight.shadow.camera.top = 5;
-directionalLight.shadow.camera.bottom = -5;
+directionalLight.shadow.camera.far = 30;  // Extended for well depth
+directionalLight.shadow.camera.left = -10;
+directionalLight.shadow.camera.right = 10;
+directionalLight.shadow.camera.top = 10;
+directionalLight.shadow.camera.bottom = -10;
 scene.add(directionalLight);
 
-const fillLight = new THREE.DirectionalLight(0x88aaff, 0.4);
+const fillLight = new THREE.DirectionalLight(0x88aaff, 0.5);
 fillLight.position.set(-5, 5, -7);
 scene.add(fillLight);
 
-const topLight = new THREE.DirectionalLight(0xffffee, 0.5);
+const topLight = new THREE.DirectionalLight(0xffffee, 0.6);
 topLight.position.set(0, 10, 0);
 scene.add(topLight);
 
-const rimLight1 = new THREE.DirectionalLight(0xff6600, 0.2);
+const rimLight1 = new THREE.DirectionalLight(0xff6600, 0.3);
 rimLight1.position.set(0, -5, -10);
 scene.add(rimLight1);
 
-const rimLight2 = new THREE.DirectionalLight(0x00ffff, 0.2);
+const rimLight2 = new THREE.DirectionalLight(0x00ffff, 0.3);
 rimLight2.position.set(10, 0, 5);
 scene.add(rimLight2);
 
 // Ground plane for shadows
 const groundGeo = new THREE.PlaneGeometry(20, 20);
-const groundMat = new THREE.ShadowMaterial({ opacity: 0.1 });
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -2;
