@@ -46,8 +46,13 @@ const metronome = createMetronome(audioEngine);
 // Create cube with audio engine for rhythm system
 const { cubeGroup, faces, faceWireframes, rhythmSystem } = createCube(scene, audioEngine);
 
+// Well reference (created after cube destruction)
+let well = null;
+
 // Setup cube interaction with callback for when all faces destroyed
 const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem, () => {
+    console.log('All faces destroyed - creating well...');
+    
     // All faces destroyed - create well at cube position
     const cubePosition = cubeGroup.position.clone();
     
@@ -66,12 +71,14 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
         wf.material.dispose();
     });
     
-    // Create well at cube position
-    createWell(scene, {
-        position: cubePosition,
+    // Create well at cube position (centered on cube center)
+    well = createWell(scene, {
+        position: new THREE.Vector3(cubePosition.x, cubePosition.y, cubePosition.z),
         radius: 2.5,
         depth: 15
     });
+    
+    console.log('Well created:', well);
     
     // Stop cube auto-rotation
     controls.autoRotate = false;
@@ -134,8 +141,13 @@ window.addEventListener('resize', () => {
 });
 
 // Animation loop
+let lastTime = performance.now();
 function animate() {
     requestAnimationFrame(animate);
+    
+    const now = performance.now();
+    const deltaTime = (now - lastTime) / 1000; // seconds
+    lastTime = now;
     
     controls.update();
     
@@ -145,7 +157,10 @@ function animate() {
         cubeGroup.rotation.x += 0.0005;
     }
     
-    const time = performance.now() * 0.001;
+    // Update well animation if well exists
+    if (well && well.update) {
+        well.update(deltaTime);
+    }
     
     renderer.render(scene, camera);
 }
