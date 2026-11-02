@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCube, setupCubeInteraction } from './cube/Cube.js';
 import { initAudio, getAudioEngine } from './audio/AudioEngine.js';
 import { createMetronome } from './rhythm/Metronome.js';
+import { createWell } from './objects/Well.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -15,7 +16,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap; // Fixed: PCFSoftShadowMap removed in newer Three.js
+renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Controls
@@ -44,7 +45,40 @@ const metronome = createMetronome(audioEngine);
 
 // Create cube with audio engine for rhythm system
 const { cubeGroup, faces, faceWireframes, rhythmSystem } = createCube(scene, audioEngine);
-setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem);
+
+// Setup cube interaction with callback for when all faces destroyed
+const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem, () => {
+    // All faces destroyed - create well at cube position
+    const cubePosition = cubeGroup.position.clone();
+    
+    // Remove cube from scene
+    scene.remove(cubeGroup);
+    faces.forEach(face => {
+        scene.remove(face);
+        if (face.material.map) face.material.map.dispose();
+        if (face.material.alphaMap) face.material.alphaMap.dispose();
+        face.geometry.dispose();
+        face.material.dispose();
+    });
+    faceWireframes.forEach(wf => {
+        scene.remove(wf);
+        wf.geometry.dispose();
+        wf.material.dispose();
+    });
+    
+    // Create well at cube position
+    createWell(scene, {
+        position: cubePosition,
+        radius: 2.5,
+        depth: 15
+    });
+    
+    // Stop cube auto-rotation
+    controls.autoRotate = false;
+    
+    // Optional: animate camera to look into well
+    // createWellPeekAnimation(camera, well);
+});
 
 // Add metronome visual elements to scene
 scene.add(metronome.getCircleGroup());
@@ -105,9 +139,11 @@ function animate() {
     
     controls.update();
     
-    // Rotate cube slowly
-    cubeGroup.rotation.y += 0.001;
-    cubeGroup.rotation.x += 0.0005;
+    // Rotate cube slowly (only if still in cube phase)
+    if (state.phase === 'cube') {
+        cubeGroup.rotation.y += 0.001;
+        cubeGroup.rotation.x += 0.0005;
+    }
     
     const time = performance.now() * 0.001;
     

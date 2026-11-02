@@ -82,7 +82,7 @@ export function createCube(scene, audioEngine) {
     return { cubeGroup, faces, faceWireframes, rhythmSystem };
 }
 
-export function setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem) {
+export function setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem, onAllFacesDestroyed) {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const state = { facesDestroyed: 0, phase: 'cube' };
@@ -125,7 +125,18 @@ export function setupCubeInteraction(faces, faceWireframes, scene, camera, rende
         createImpactFlash(face, texX, texY, scene, perfect);
         
         if (userData.clickCount >= userData.maxClicks) {
-            animateFaceShatter(face, faceWireframes, scene, state);
+            animateFaceShatter(face, faceWireframes, scene, state, () => {
+                // Callback when a face is fully shattered
+                state.facesDestroyed++;
+                checkAllFacesDestroyed();
+            });
+        }
+    }
+
+    function checkAllFacesDestroyed() {
+        if (state.facesDestroyed >= 6 && onAllFacesDestroyed) {
+            state.phase = 'well';
+            onAllFacesDestroyed();
         }
     }
 
