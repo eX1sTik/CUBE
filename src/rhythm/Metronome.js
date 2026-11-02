@@ -98,12 +98,12 @@ export class Metronome {
         this.updateCircles();
         
         // Subscribe to audio engine beat events
-        this.unsubscribeBeat = this.audioEngine.onBeat((beatTime, beatIndex, measureIndex) => {
+        this.unsubscribeBeat = this.audioEngine.onBeat((beatTime, beatIndex, measureIndex, isKickBeat) => {
             if (!this.isActive) return;
             this.currentBeat = beatIndex;
             this.measureCount = measureIndex;
             this.updateCircles();
-            this.pulseCurrentCircle();
+            this.pulseCurrentCircle(isKickBeat);
         });
         
         this.unsubscribeMeasure = this.audioEngine.onMeasure((measureTime, measureIndex) => {
@@ -133,7 +133,7 @@ export class Metronome {
                 // This circle should be lit
                 if (!circleContainer.userData.isActive) {
                     circleContainer.userData.isActive = true;
-                    this.animateCircleOn(circleContainer);
+                    this.animateCircleOn(circleContainer, index % 2 === 0); // Kick beats (0, 2) get green
                 }
             } else {
                 // This circle should be off
@@ -145,7 +145,7 @@ export class Metronome {
         });
     }
     
-    animateCircleOn(circleContainer) {
+    animateCircleOn(circleContainer, isKickBeat) {
         const { fillMaterial, fill } = circleContainer.userData;
         const startTime = performance.now();
         const duration = 150;
@@ -155,6 +155,7 @@ export class Metronome {
             const progress = Math.min(elapsed / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
             
+            fillMaterial.color.setHex(isKickBeat ? 0x00ff88 : 0x00ffff);
             fillMaterial.opacity = 0.9 * eased;
             fill.scale.setScalar(0.5 + 0.5 * eased);
             
@@ -187,7 +188,7 @@ export class Metronome {
         animate();
     }
     
-    pulseCurrentCircle() {
+    pulseCurrentCircle(isKickBeat) {
         // Extra pulse animation on the current beat circle
         const circleContainer = this.circles[this.currentBeat];
         if (!circleContainer) return;
@@ -209,9 +210,10 @@ export class Metronome {
             fill.scale.setScalar(breath);
             fillMaterial.opacity = 0.9 * breath;
             
-            // Ring also pulses
+            // Ring also pulses - kick beats get stronger pulse
+            const pulseIntensity = isKickBeat ? 0.2 : 0.1;
             ringMaterial.opacity = 0.4 + 0.4 * Math.sin(progress * Math.PI);
-            ring.scale.setScalar(1 + 0.1 * Math.sin(progress * Math.PI));
+            ring.scale.setScalar(1 + pulseIntensity * Math.sin(progress * Math.PI));
             
             if (progress < 1) {
                 requestAnimationFrame(animatePulse);
@@ -229,6 +231,7 @@ export class Metronome {
         this.circles.forEach(circleContainer => {
             const { fillMaterial, fill } = circleContainer.userData;
             fillMaterial.opacity = 0;
+            fillMaterial.color.setHex(0x00ffff);
             fill.scale.setScalar(0.5);
             circleContainer.userData.isActive = false;
         });
@@ -243,7 +246,7 @@ export class Metronome {
             this.measureCount++;
         }
         this.updateCircles();
-        this.pulseCurrentCircle();
+        this.pulseCurrentCircle(this.currentBeat % 2 === 0);
     }
     
     // Set BPM (updates interval)

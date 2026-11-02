@@ -88,7 +88,7 @@ export class AudioEngine {
     }
 
     scheduleBeat(time, beatIndex, measureIndex) {
-        // Emit beat event for visual sync (Metronome)
+        // Emit beat event for visual sync (Metronome, RhythmSystem)
         // Use a tiny setTimeout to align with audio thread timing
         const delay = (time - this.ctx.currentTime) * 1000;
         if (delay > -50 && delay < 500) { // Only emit if reasonably close
