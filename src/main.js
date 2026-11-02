@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCube, setupCubeInteraction } from './cube/Cube.js';
 import { initAudio, getAudioEngine } from './audio/AudioEngine.js';
-import { createMetronome } from './rhythm/Metronome.js';
 import { createWell } from './objects/Well.js';
 
 // Scene setup
@@ -39,9 +38,8 @@ function initAudioOnGesture() {
 window.addEventListener('click', initAudioOnGesture, { once: true });
 window.addEventListener('keydown', initAudioOnGesture, { once: true });
 
-// Create audio engine and metronome
+// Create audio engine
 const audioEngine = getAudioEngine();
-const metronome = createMetronome(audioEngine);
 
 // Create cube with audio engine for rhythm system
 const { cubeGroup, faces, faceWireframes, rhythmSystem } = createCube(scene, audioEngine);
@@ -100,10 +98,6 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
     // Optional: animate camera to look into well
     // createWellPeekAnimation(camera, well);
 });
-
-// Add metronome visual elements to scene
-scene.add(metronome.getCircleGroup());
-metronome.start();
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);  // Brighter
