@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CrackTexture } from '../effects/CrackTexture.js';
 import { createImpactFlash } from '../effects/ImpactFlash.js';
 import { animateFaceShatter } from '../effects/ShatterEffect.js';
-import { createShardGeometry } from '../utils/GeometryUtils.js';
+import { createRhythmSystem } from '../rhythm/RhythmSystem.js';
 
 // Face data
 const faceSize = 2;
@@ -28,15 +28,13 @@ const localEdges = new Float32Array([
 const edgeGeometry = new THREE.BufferGeometry();
 edgeGeometry.setAttribute('position', new THREE.BufferAttribute(localEdges, 3));
 
-export function createCube(scene) {
+export function createCube(scene, audioEngine) {
     const faces = [];
     const faceWireframes = [];
 
     faceData.forEach((data, index) => {
         const crackTexture = new CrackTexture(512);
         
-        // Use white color so the map texture (cracks) shows through correctly
-        // Black color would multiply with the map and make everything black
         const faceMaterial = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             roughness: 0.35,
@@ -77,10 +75,14 @@ export function createCube(scene) {
     faceWireframes.forEach(wf => cubeGroup.add(wf));
     scene.add(cubeGroup);
 
-    return { cubeGroup, faces, faceWireframes };
+    // Create rhythm system
+    const rhythmSystem = createRhythmSystem(audioEngine);
+    rhythmSystem.start();
+
+    return { cubeGroup, faces, faceWireframes, rhythmSystem };
 }
 
-export function setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls) {
+export function setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem) {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const state = { facesDestroyed: 0, phase: 'cube' };
@@ -100,25 +102,76 @@ export function setupCubeInteraction(faces, faceWireframes, scene, camera, rende
             const uv = hit.uv;
             const texX = uv.x * 512;
             const texY = (1 - uv.y) * 512;
-            handleFaceClick(hitFace, texX, texY);
+            
+            // Check rhythm - only register hit if on beat
+            const rhythmResult = rhythmSystem.registerClick(hitFace, texX, texY);
+            
+            if (rhythmResult.success) {
+                handleFaceClick(hitFace, texX, texY, rhythmResult.perfect);
+            } else {
+                // Visual feedback for missed beat
+                showMissFeedback(hitFace, scene);
+            }
         }
     }
 
-    function handleFaceClick(face, texX, texY) {
+    function handleFaceClick(face, texX, texY, perfect = false) {
         const userData = face.userData;
         userData.clickCount++;
         
         const severity = userData.clickCount;
         userData.crackTexture.addCracks(severity, texX, texY);
         
-        createImpactFlash(face, texX, texY, scene);
+        createImpactFlash(face, texX, texY, scene, perfect);
         
         if (userData.clickCount >= userData.maxClicks) {
             animateFaceShatter(face, faceWireframes, scene, state);
         }
     }
 
+    function showMissFeedback(face, scene) {
+        // Create a red "X" or flash to indicate missed beat
+        const worldPos = new THREE.Vector3();
+        const worldNormal = new THREE.Vector3();
+        face.getWorldPosition(worldPos);
+        face.getWorldDirection(worldNormal);
+        
+        const flashGeo = new THREE.RingGeometry(0.05, 0.2, 8);
+        const flashMat = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.6,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+        const flash = new THREE.Mesh(flashGeo, flashMat);
+        flash.position.copy(worldPos).addScaledVector(worldNormal, 0.011);
+        flash.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
+        scene.add(flash);
+        
+        const startTime = performance.now();
+        const duration = 200;
+        
+        function animateFlash() {
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            flash.material.opacity = 0.6 * (1 - eased);
+            flash.scale.setScalar(1 + eased * 2);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateFlash);
+            } else {
+                scene.remove(flash);
+                flash.geometry.dispose();
+                flash.material.dispose();
+            }
+        }
+        animateFlash();
+    }
+
     window.addEventListener('click', onClick);
     
-    return { state };
+    return { state, rhythmSystem };
 }

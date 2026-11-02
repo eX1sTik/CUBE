@@ -34,9 +34,9 @@ initAudio();
 const audioEngine = getAudioEngine();
 const metronome = createMetronome(audioEngine);
 
-// Create cube
-const { cubeGroup, faces, faceWireframes } = createCube(scene);
-setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls);
+// Create cube with audio engine for rhythm system
+const { cubeGroup, faces, faceWireframes, rhythmSystem } = createCube(scene, audioEngine);
+setupCubeInteraction(faces, faceWireframes, scene, camera, renderer, controls, rhythmSystem);
 
 // Add metronome visual elements to scene
 scene.add(metronome.getCircleGroup());

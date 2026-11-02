@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
-export function createImpactFlash(face, texX, texY, scene) {
+export function createImpactFlash(face, texX, texY, scene, perfect = false) {
     const flashGeo = new THREE.RingGeometry(0.01, 0.15, 32);
     const flashMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+        color: perfect ? 0x00ff88 : 0xffffff,
         transparent: true,
         opacity: 0.8,
         side: THREE.DoubleSide,
@@ -21,7 +21,7 @@ export function createImpactFlash(face, texX, texY, scene) {
     scene.add(flash);
     
     const startTime = performance.now();
-    const duration = 150;
+    const duration = perfect ? 200 : 150;
     
     function animateFlash() {
         const elapsed = performance.now() - startTime;
@@ -29,7 +29,7 @@ export function createImpactFlash(face, texX, texY, scene) {
         const eased = 1 - Math.pow(1 - progress, 3);
         
         flash.material.opacity = 0.8 * (1 - eased);
-        flash.scale.setScalar(1 + eased * 3);
+        flash.scale.setScalar(1 + eased * (perfect ? 4 : 3));
         
         if (progress < 1) {
             requestAnimationFrame(animateFlash);
