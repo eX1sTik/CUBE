@@ -25,11 +25,12 @@ export class BruiseTexture {
     }
 
     clear() {
-        // Skin base color
-        this.visibleCtx.fillStyle = '#FFDBAC';
+        // Transparent base - will blend with dwarf texture
+        this.visibleCtx.clearRect(0, 0, this.size, this.size);
+        this.visibleCtx.fillStyle = 'rgba(0, 0, 0, 0)';
         this.visibleCtx.fillRect(0, 0, this.size, this.size);
         
-        // Alpha starts fully opaque (no bruising)
+        // Alpha starts fully opaque (no bruising = fully visible dwarf texture)
         this.alphaCtx.fillStyle = 'white';
         this.alphaCtx.fillRect(0, 0, this.size, this.size);
         
@@ -38,18 +39,19 @@ export class BruiseTexture {
     }
 
     addBruise(x, y, intensity = 1.0) {
-        // Clamp to texture bounds
-        x = Math.max(20, Math.min(this.size - 20, x));
-        y = Math.max(20, Math.min(this.size - 20, y));
+        // Clamp to texture bounds with padding
+        x = Math.max(30, Math.min(this.size - 30, x));
+        y = Math.max(30, Math.min(this.size - 30, y));
         
         const bruise = {
             x: x,
             y: y,
-            intensity: Math.min(intensity, 2.0),
+            intensity: Math.min(intensity, 2.5),
             age: 0, // 0 = fresh, 1 = healed
-            size: 30 + Math.random() * 40 * intensity,
-            colorPhase: Math.random() * Math.PI * 2, // For color variation
-            shape: this.generateBruiseShape()
+            size: 25 + Math.random() * 35 * intensity,
+            colorPhase: Math.random() * Math.PI * 2,
+            shape: this.generateBruiseShape(),
+            layers: this.generateBruiseLayers()
         };
         
         this.bruises.push(bruise);
@@ -59,22 +61,33 @@ export class BruiseTexture {
     generateBruiseShape() {
         // Generate organic blob shape for bruise
         const points = [];
-        const segments = 8 + Math.floor(Math.random() * 6);
+        const segments = 10 + Math.floor(Math.random() * 8);
         
         for (let i = 0; i < segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
-            const radius = 0.5 + Math.random() * 0.5;
+            const radius = 0.4 + Math.random() * 0.6;
             points.push({ angle, radius });
         }
         
         return points;
     }
 
+    generateBruiseLayers() {
+        // Multiple layers for realistic bruise depth
+        return [
+            { scale: 1.0, opacity: 1.0, blur: 0 },      // Core
+            { scale: 1.3, opacity: 0.6, blur: 2 },      // Middle
+            { scale: 1.6, opacity: 0.3, blur: 4 },      // Outer
+            { scale: 2.0, opacity: 0.15, blur: 6 }      // Fade
+        ];
+    }
+
     update(deltaTime) {
         let needsRedraw = false;
         
         this.bruises.forEach(bruise => {
-            bruise.age += deltaTime * 0.0001; // Very slow healing
+            // Very slow healing - bruises last a long time
+            bruise.age += deltaTime * 0.00002; 
             if (bruise.age < 1) {
                 needsRedraw = true;
             }
@@ -89,11 +102,10 @@ export class BruiseTexture {
     }
 
     redraw() {
-        // Base skin
-        this.visibleCtx.fillStyle = '#FFDBAC';
-        this.visibleCtx.fillRect(0, 0, this.size, this.size);
+        // Clear visible canvas (transparent)
+        this.visibleCtx.clearRect(0, 0, this.size, this.size);
         
-        // Alpha base (fully opaque)
+        // Alpha base (fully opaque = show dwarf texture)
         this.alphaCtx.fillStyle = 'white';
         this.alphaCtx.fillRect(0, 0, this.size, this.size);
         
@@ -110,66 +122,86 @@ export class BruiseTexture {
         const intensity = bruise.intensity;
         
         // Bruise color evolution over time
-        // Fresh: red/purple -> Blue/purple -> Green/yellow -> Fade
         let r, g, b, a;
         
-        if (age < 0.2) {
-            // Fresh: reddish purple
-            const t = age / 0.2;
-            r = 180 + Math.sin(bruise.colorPhase) * 40;
-            g = 20 + t * 30;
-            b = 60 + Math.cos(bruise.colorPhase) * 40;
-            a = 0.7 * intensity * (1 - t * 0.3);
-        } else if (age < 0.5) {
-            // Blue/purple phase
-            const t = (age - 0.2) / 0.3;
-            r = 80 - t * 40;
-            g = 30 - t * 20;
-            b = 120 + t * 40;
-            a = 0.8 * intensity * (1 - t * 0.2);
-        } else if (age < 0.8) {
-            // Green/yellow phase
-            const t = (age - 0.5) / 0.3;
-            r = 60 + t * 80;
-            g = 80 + t * 60;
-            b = 20 - t * 15;
-            a = 0.6 * intensity * (1 - t * 0.5);
+        if (age < 0.15) {
+            // Fresh: bright red/purple
+            const t = age / 0.15;
+            r = 200 + Math.sin(bruise.colorPhase) * 30;
+            g = 30 + t * 20;
+            b = 80 + Math.cos(bruise.colorPhase) * 50;
+            a = 0.85 * intensity * (1 - t * 0.2);
+        } else if (age < 0.35) {
+            // Dark purple/blue phase
+            const t = (age - 0.15) / 0.2;
+            r = 120 - t * 60;
+            g = 25 - t * 15;
+            b = 140 + t * 40;
+            a = 0.9 * intensity * (1 - t * 0.15);
+        } else if (age < 0.65) {
+            // Blue-green transition
+            const t = (age - 0.35) / 0.3;
+            r = 60 - t * 30;
+            g = 40 + t * 50;
+            b = 120 - t * 60;
+            a = 0.75 * intensity * (1 - t * 0.25);
+        } else if (age < 0.85) {
+            // Yellow-green healing
+            const t = (age - 0.65) / 0.2;
+            r = 80 + t * 100;
+            g = 100 + t * 80;
+            b = 30 - t * 20;
+            a = 0.55 * intensity * (1 - t * 0.4);
         } else {
-            // Fading
-            const t = (age - 0.8) / 0.2;
-            r = 180;
-            g = 160;
-            b = 140;
+            // Final fade to brownish
+            const t = (age - 0.85) / 0.15;
+            r = 160 + t * 40;
+            g = 140 + t * 40;
+            b = 100 + t * 40;
             a = 0.3 * intensity * (1 - t);
         }
         
-        const color = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${a})`;
-        const alphaVal = 1 - a * 0.8; // Alpha map: white = opaque, black = transparent
+        const baseColor = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${a})`;
         
-        // Draw on visible canvas
+        // Draw on visible canvas with multiply blending for realistic skin interaction
         visCtx.save();
         visCtx.translate(bruise.x, bruise.y);
-        visCtx.fillStyle = color;
         visCtx.globalCompositeOperation = 'multiply';
-        this.drawBruiseShape(visCtx, bruise.shape, bruise.size);
+        
+        // Draw multiple layers for depth
+        bruise.layers.forEach(layer => {
+            visCtx.globalAlpha = layer.opacity * a;
+            if (layer.blur > 0) {
+                visCtx.shadowColor = baseColor;
+                visCtx.shadowBlur = layer.blur;
+            } else {
+                visCtx.shadowBlur = 0;
+            }
+            
+            visCtx.fillStyle = baseColor;
+            this.drawBruiseShape(visCtx, bruise.shape, bruise.size * layer.scale);
+        });
+        
         visCtx.restore();
         
-        // Draw on alpha canvas (for transparency)
+        // Draw on alpha canvas (black = transparent, white = opaque)
+        // We want bruises to make the dwarf texture MORE visible, not less
+        // So we don't modify alpha for bruises - they're color overlays
+        // But we can add subtle normal map effect via alpha variation
+        
         alphaCtx.save();
         alphaCtx.translate(bruise.x, bruise.y);
-        alphaCtx.fillStyle = `rgba(0, 0, 0, ${a * 0.6})`;
         alphaCtx.globalCompositeOperation = 'source-over';
-        this.drawBruiseShape(alphaCtx, bruise.shape, bruise.size);
-        alphaCtx.restore();
         
-        // Add subtle edge highlight on visible
-        visCtx.save();
-        visCtx.translate(bruise.x, bruise.y);
-        visCtx.strokeStyle = `rgba(${Math.floor(r * 0.7)}, ${Math.floor(g * 0.7)}, ${Math.floor(b * 0.7)}, ${a * 0.5})`;
-        visCtx.lineWidth = 2;
-        visCtx.globalCompositeOperation = 'overlay';
-        this.drawBruiseShape(visCtx, bruise.shape, bruise.size, true);
-        visCtx.restore();
+        // Slight alpha variation for 3D effect
+        bruise.layers.forEach(layer => {
+            const alphaVal = 1 - (layer.opacity * a * 0.1); // Very subtle
+            alphaCtx.globalAlpha = 1 - alphaVal;
+            alphaCtx.fillStyle = 'black';
+            this.drawBruiseShape(alphaCtx, bruise.shape, bruise.size * layer.scale * 0.8);
+        });
+        
+        alphaCtx.restore();
     }
 
     drawBruiseShape(ctx, shape, size, strokeOnly = false) {
