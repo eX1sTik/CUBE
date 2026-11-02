@@ -10,6 +10,8 @@ export function createWell(scene, options = {}) {
         rotation = new THREE.Euler(0, 0, 0)
     } = options;
 
+    console.log('createWell called with:', { radius, depth, position, rotation });
+
     const wellGroup = new THREE.Group();
     wellGroup.position.copy(position);
     wellGroup.rotation.copy(rotation);
@@ -203,6 +205,7 @@ export function createWell(scene, options = {}) {
 
     // Add to scene
     scene.add(wellGroup);
+    console.log('Well added to scene, wellGroup:', wellGroup);
 
     return {
         group: wellGroup,

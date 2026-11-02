@@ -71,11 +71,22 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
         wf.material.dispose();
     });
     
-    // Create well at cube position (centered on cube center)
+    // Position well so its TOP RIM is at the cube's top (y=1 for a 2-unit cube centered at 0)
+    // Well depth is 15, so center should be at y = 1 - 15/2 = -6.5
+    const wellDepth = 15;
+    const wellPosition = new THREE.Vector3(
+        cubePosition.x,
+        cubePosition.y + 1 - wellDepth / 2,  // Align well top with cube top
+        cubePosition.z
+    );
+    
+    console.log('Creating well at:', wellPosition);
+    
+    // Create well at adjusted position
     well = createWell(scene, {
-        position: new THREE.Vector3(cubePosition.x, cubePosition.y, cubePosition.z),
+        position: wellPosition,
         radius: 2.5,
-        depth: 15
+        depth: wellDepth
     });
     
     console.log('Well created:', well);
