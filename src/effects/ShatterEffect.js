@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createShardGeometry } from '../utils/GeometryUtils.js';
 
-export function animateFaceShatter(face, faceWireframes, scene, state) {
+export function animateFaceShatter(face, faceWireframes, scene, state, onComplete) {
     const userData = face.userData;
     const crackTexture = userData.crackTexture;
     const faceIndex = userData.faceIndex;
@@ -58,27 +58,12 @@ export function animateFaceShatter(face, faceWireframes, scene, state) {
             userData.clickCount = 0;
             
             state.facesDestroyed++;
-            checkAllFacesDestroyed(state, scene);
+            if (onComplete) onComplete();
         }
     }
     
     face.visible = false;
     animatePieces();
-}
-
-function checkAllFacesDestroyed(state, scene) {
-    if (state.facesDestroyed >= 6) {
-        setTimeout(() => {
-            showWell(scene, state);
-        }, 800);
-    }
-}
-
-function showWell(scene, state) {
-    state.phase = 'well';
-    // Well creation would be imported from a separate module
-    // For now, this is a placeholder
-    console.log('All faces destroyed - well would appear here');
 }
 
 function createShatterPieces(face, crackTexture, scene) {

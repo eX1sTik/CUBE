@@ -127,14 +127,13 @@ export function setupCubeInteraction(faces, faceWireframes, scene, camera, rende
         if (userData.clickCount >= userData.maxClicks) {
             animateFaceShatter(face, faceWireframes, scene, state, () => {
                 // Callback when a face is fully shattered
-                state.facesDestroyed++;
                 checkAllFacesDestroyed();
             });
         }
     }
 
     function checkAllFacesDestroyed() {
-        if (state.facesDestroyed >= 6 && onAllFacesDestroyed) {
+        if (state.facesDestroyed >= 6 && state.phase !== 'well' && onAllFacesDestroyed) {
             state.phase = 'well';
             onAllFacesDestroyed();
         }
