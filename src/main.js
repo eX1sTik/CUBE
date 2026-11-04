@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCube, setupCubeInteraction } from './cube/Cube.js';
 import { initAudio, getAudioEngine } from './audio/AudioEngine.js';
 import { createWell } from './objects/Well.js';
+import { startWellDive } from './animation/WellDiveAnimation.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -92,8 +93,8 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
     console.log('Well group position:', well.group.position);
     console.log('Well group world position:', well.getWorldPosition());
     
-    // Start camera dive into the well darkness
-    well.startDive(camera, controls, scene);
+    // Start camera dive into the well darkness using separate animation file
+    startWellDive(camera, controls, scene, well.group, wellDepth);
     
     // Stop cube auto-rotation
     controls.autoRotate = false;
