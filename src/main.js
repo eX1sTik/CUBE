@@ -92,6 +92,9 @@ const { state } = setupCubeInteraction(faces, faceWireframes, scene, camera, ren
     console.log('Well group position:', well.group.position);
     console.log('Well group world position:', well.getWorldPosition());
     
+    // Start camera dive into the well darkness
+    well.startDive(camera, controls, scene);
+    
     // Stop cube auto-rotation
     controls.autoRotate = false;
     
